@@ -76,23 +76,22 @@ func (extractor *Extractor) pathsByteErr() ([][]byte, error) {
 	return paths, nil
 }
 
-func (extractor *Extractor) extract(getPaths func() ([][]byte, error), getItem func([]byte) (*concurrency.Item, error)) error {
+func (extractor *Extractor) extract(
+	getPaths func() ([][]byte, error),
+	getItem func([]byte) (*concurrency.Item[*extractParams, [][]byte], error),
+) error {
 	extractor.unmarkPaths()
 	paths, err := getPaths()
 	if err != nil {
 		return err
 	}
-	items := []*concurrency.Item{{Output: paths}}
+	items := []*concurrency.Item[*extractParams, [][]byte]{{Output: paths}}
 
 	for {
-		var newItems []*concurrency.Item
+		var newItems []*concurrency.Item[*extractParams, [][]byte]
 		for _, i := range items {
 			if i.Output != nil {
-				newPaths, ok := i.Output.([][]byte)
-				if !ok {
-					return fmt.Errorf("unable to cast item.Output to [][]byte: %v", *i)
-				}
-
+				newPaths := i.Output
 				for _, np := range newPaths {
 					if !extractor.paths[string(np)] {
 						extractor.paths[string(np)] = true
@@ -111,7 +110,7 @@ func (extractor *Extractor) extract(getPaths func() ([][]byte, error), getItem f
 		}
 
 		items = newItems
-		err = concurrency.Execute(extractFile, items, extractor.config.Concurrency)
+		err = concurrency.Execute[*extractParams, [][]byte](extractFile, items, extractor.config.Concurrency)
 		if err != nil {
 			return err
 		}
@@ -122,15 +121,15 @@ func (extractor *Extractor) extract(getPaths func() ([][]byte, error), getItem f
 func (extractor *Extractor) extractMasterTable() error {
 	return extractor.extract(
 		getInitialFilePaths,
-		func(path []byte) (*concurrency.Item, error) {
+		func(path []byte) (*concurrency.Item[*extractParams, [][]byte], error) {
 			src, err := sha1Digest(toMasterTablePath(string(path)), digestSalt)
 			if err != nil {
 				return nil, err
 			}
 			dest := addExt(filepath.FromSlash(string(path)), ".json")
 
-			return &concurrency.Item{
-				Data: extractParams{
+			return &concurrency.Item[*extractParams, [][]byte]{
+				Data: &extractParams{
 					src:     filepath.Join(extractor.config.Workdir, dumpDir, dumpAssetDir, src[0:2], src[2:]),
 					dest:    filepath.Join(extractor.config.Workdir, outputDir, outputOrderedMapDir, dest),
 					extract: encoding.OrderedmapToJSON,
@@ -146,15 +145,15 @@ func (extractor *Extractor) extractMasterTable() error {
 func (extractor *Extractor) extractActionDSLAMF3() error {
 	return extractor.extract(
 		extractor.pathsByteErr,
-		func(path []byte) (*concurrency.Item, error) {
+		func(path []byte) (*concurrency.Item[*extractParams, [][]byte], error) {
 			src, err := sha1Digest(addExt(string(path), ".action.dsl.amf3.deflate"), digestSalt)
 			if err != nil {
 				return nil, err
 			}
 			dest := addExt(filepath.FromSlash(string(path)), ".action.dsl.json")
 
-			return &concurrency.Item{
-				Data: extractParams{
+			return &concurrency.Item[*extractParams, [][]byte]{
+				Data: &extractParams{
 					src:     filepath.Join(extractor.config.Workdir, dumpDir, dumpAssetDir, src[0:2], src[2:]),
 					dest:    filepath.Join(extractor.config.Workdir, outputDir, outputAssetsDir, dest),
 					extract: encoding.Amf3ToJSON,

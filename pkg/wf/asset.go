@@ -3,7 +3,6 @@ package wf
 import (
 	"bytes"
 	"errors"
-	"fmt"
 	"io"
 	"os"
 	"path"
@@ -52,12 +51,8 @@ type extractParams struct {
 	output  func([]byte) ([][]byte, error)
 }
 
-func extractFile(i *concurrency.Item) (interface{}, error) {
-	params, ok := i.Data.(extractParams)
-	if !ok {
-		return nil, fmt.Errorf("unable to cast item.Data to extractParams: %v", *i)
-	}
-
+func extractFile(i *concurrency.Item[*extractParams, [][]byte]) ([][]byte, error) {
+	params := i.Data
 	srcFile, err := os.Open(params.src)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
