@@ -11,7 +11,7 @@ var extractConcurrency int
 
 var extractCmd = &cobra.Command{
 	Use:   "extract [target dir]",
-	Short: "Extract files into readable format.",
+	Short: "Extract files into readable format",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 
@@ -34,5 +34,5 @@ var extractCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(extractCmd)
-	extractCmd.Flags().IntVarP(&extractConcurrency, "concurrency", "c", 5, "Maximum number of concurrent file extractions.")
+	extractCmd.Flags().IntVarP(&extractConcurrency, "concurrency", "c", 5, "Maximum number of concurrent file extractions")
 }
