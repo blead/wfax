@@ -22,4 +22,4 @@ jobs:
         github_token: ${{ secrets.GITHUB_TOKEN }}
         goos: ${{ matrix.goos }}
         goarch: ${{ matrix.goarch }}
-        ldflags: -X "cmd.appVersion=${{ env.APP_VERSION }}"
+        ldflags: -X "github.com/blead/wfax/cmd.appVersion=${{ env.APP_VERSION }}"
