@@ -71,7 +71,7 @@ func readOrderedMap(raw []byte) (json.Marshaler, error) {
 		offsets = append(offsets, &offset)
 	}
 
-	// start at header[4 + entriesCount*8], each key end at header[4 + entriesCount*8 + Keyendoffset]
+	// start at header[4 + entriesCount*8], each key ends at header[4 + entriesCount*8 + KeyEndOffset]
 	keySection := header[4+entriesCount*8:]
 	var keys [][]byte
 	currentOffset := int32(0)
