@@ -170,7 +170,7 @@ func (client *Client) parseMetadata(json []byte) (string, []*asset, error) {
 	return version, assets, nil
 }
 
-func (client *Client) downloadAndExtract(i *concurrency.Item[*asset, interface{}]) (interface{}, error) {
+func (client *Client) downloadAndExtract(i *concurrency.Item[*asset, any]) (any, error) {
 	a := i.Data
 	resp, err := retryablehttp.Get(a.location)
 	if err != nil {
@@ -214,16 +214,16 @@ func (client *Client) downloadAndExtract(i *concurrency.Item[*asset, interface{}
 }
 
 func (client *Client) fetch(assets []*asset) error {
-	var items []*concurrency.Item[*asset, interface{}]
+	var items []*concurrency.Item[*asset, any]
 	for _, a := range assets {
-		items = append(items, &concurrency.Item[*asset, interface{}]{
+		items = append(items, &concurrency.Item[*asset, any]{
 			Data:   a,
 			Output: nil,
 			Err:    nil,
 		})
 	}
 
-	return concurrency.Execute[*asset, interface{}](client.downloadAndExtract, items, client.config.Concurrency)
+	return concurrency.Execute[*asset, any](client.downloadAndExtract, items, client.config.Concurrency)
 }
 
 // FetchAssetsFromAPI fetches metadata from API then download and extract the assets archives.
