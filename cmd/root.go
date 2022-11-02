@@ -8,8 +8,7 @@ import (
 
 var rootCmd = &cobra.Command{
 	Use:   "wfax",
-	Short: "World Filpper Asset Extractor CLI",
-	Long:  `Nasom's Asset Extractor partially reimplemented as a CLI`,
+	Short: "World Flipper Asset Extractor CLI",
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.
