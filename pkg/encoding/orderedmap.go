@@ -27,9 +27,24 @@ type orderedMapOffset struct {
 	ValueEndOffset int32
 }
 
-func readOrderedMap(raw []byte) (*omap.OrderedMap, error) {
+func readOrderedMap(raw []byte) (json.Marshaler, error) {
+	data, err := readZlib(raw)
+	if err == nil {
+		// data is zlib-compressed csv
+		r := csv.NewReader(bytes.NewReader(data))
+		rec, err := r.ReadAll()
+		if err != nil {
+			return nil, err
+		}
+		output, err := jsonMarshalNoEscape(flatten(rec))
+		if err != nil {
+			return nil, err
+		}
+		return json.RawMessage(output), nil
+	}
+
 	var headerSize int32
-	err := binary.Read(bytes.NewReader(raw[0:4]), binary.LittleEndian, &headerSize)
+	err = binary.Read(bytes.NewReader(raw[0:4]), binary.LittleEndian, &headerSize)
 	if err != nil {
 		return nil, err
 	}
@@ -53,7 +68,6 @@ func readOrderedMap(raw []byte) (*omap.OrderedMap, error) {
 		if err != nil {
 			return nil, err
 		}
-
 		offsets = append(offsets, &offset)
 	}
 
@@ -77,23 +91,11 @@ func readOrderedMap(raw []byte) (*omap.OrderedMap, error) {
 	output := omap.New()
 	output.SetEscapeHTML(false)
 	for i, key := range keys {
-		value, err := readZlib((values[i]))
+		value, err := readOrderedMap(values[i])
 		if err != nil {
-			obj, err := readOrderedMap(values[i])
-			if err != nil {
-				return nil, err
-			}
-
-			output.Set(string(key), obj)
-		} else {
-			r := csv.NewReader(bytes.NewReader(value))
-			rec, err := r.ReadAll()
-			if err != nil {
-				return nil, err
-			}
-
-			output.Set(string(key), flatten(rec))
+			return nil, err
 		}
+		output.Set(string(key), value)
 	}
 
 	return output, nil
@@ -101,10 +103,9 @@ func readOrderedMap(raw []byte) (*omap.OrderedMap, error) {
 
 // OrderedmapToJSON converts WF orderedmap to JSON
 func OrderedmapToJSON(raw []byte) ([]byte, error) {
-	output, err := readOrderedMap(raw)
+	om, err := readOrderedMap(raw)
 	if err != nil {
 		return nil, err
 	}
-
-	return json.Marshal(output)
+	return jsonMarshalNoEscape(om)
 }

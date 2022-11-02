@@ -2,7 +2,6 @@ package encoding
 
 import (
 	"bytes"
-	"encoding/json"
 
 	amf "github.com/remyoudompheng/goamf"
 )
@@ -20,5 +19,5 @@ func Amf3ToJSON(raw []byte) ([]byte, error) {
 		return nil, err
 	}
 
-	return json.Marshal(output)
+	return jsonMarshalNoEscape(output)
 }
