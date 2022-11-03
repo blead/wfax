@@ -9,19 +9,6 @@ import (
 	omap "github.com/iancoleman/orderedmap"
 )
 
-func flatten(slices [][]string) []string {
-	total := 0
-	for _, slice := range slices {
-		total += len(slice)
-	}
-	flat := make([]string, total)
-	i := 0
-	for _, slice := range slices {
-		i += copy(flat[i:], slice)
-	}
-	return flat
-}
-
 type orderedMapOffset struct {
 	KeyEndOffset   int32
 	ValueEndOffset int32
@@ -36,7 +23,7 @@ func readOrderedMap(raw []byte) (json.Marshaler, error) {
 		if err != nil {
 			return nil, err
 		}
-		output, err := jsonMarshalNoEscape(flatten(rec))
+		output, err := jsonMarshalNoEscape(Flatten(rec))
 		if err != nil {
 			return nil, err
 		}

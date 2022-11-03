@@ -1,7 +1,10 @@
 package wf
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -30,8 +33,9 @@ func DefaultExtractorConfig() *ExtractorConfig {
 
 // Extractor parses and extracts WF assets.
 type Extractor struct {
-	config *ExtractorConfig
-	paths  map[string]bool
+	config  *ExtractorConfig
+	paths   map[string]bool
+	parsers []parser
 }
 
 // NewExtractor creates a new extractor with the supplied configuration.
@@ -57,31 +61,14 @@ func NewExtractor(config *ExtractorConfig) (*Extractor, error) {
 	}
 
 	return &Extractor{
-		config: config,
-		paths:  make(map[string]bool),
+		config:  config,
+		paths:   make(map[string]bool),
+		parsers: []parser{&orderedmapParser{}, &actionDSLAMF3Parser{}},
 	}, nil
 }
 
-func (extractor *Extractor) unmarkPaths() {
-	for path := range extractor.paths {
-		extractor.paths[path] = false
-	}
-}
-
-func (extractor *Extractor) pathsByteErr() ([][]byte, error) {
-	var paths [][]byte
-	for path := range extractor.paths {
-		paths = append(paths, []byte(path))
-	}
-	return paths, nil
-}
-
-func (extractor *Extractor) extract(
-	getPaths func() ([][]byte, error),
-	getItem func([]byte) (*concurrency.Item[*extractParams, [][]byte], error),
-) error {
-	extractor.unmarkPaths()
-	paths, err := getPaths()
+func (extractor *Extractor) extract() error {
+	paths, err := getInitialFilePaths()
 	if err != nil {
 		return err
 	}
@@ -96,11 +83,15 @@ func (extractor *Extractor) extract(
 					if !extractor.paths[string(np)] {
 						extractor.paths[string(np)] = true
 
-						newItem, err := getItem(np)
-						if err != nil {
-							return err
-						}
-						newItems = append(newItems, newItem)
+						newItems = append(newItems, &concurrency.Item[*extractParams, [][]byte]{
+							Data: &extractParams{
+								path:    string(np),
+								parsers: extractor.parsers,
+								config:  extractor.config,
+							},
+							Output: nil,
+							Err:    nil,
+						})
 					}
 				}
 			}
@@ -110,7 +101,7 @@ func (extractor *Extractor) extract(
 		}
 
 		items = newItems
-		err = concurrency.Execute[*extractParams, [][]byte](extractFile, items, extractor.config.Concurrency)
+		err = concurrency.Execute[*extractParams, [][]byte](extractPath, items, extractor.config.Concurrency)
 		if err != nil {
 			return err
 		}
@@ -118,62 +109,79 @@ func (extractor *Extractor) extract(
 	return nil
 }
 
-func (extractor *Extractor) extractMasterTable() error {
-	return extractor.extract(
-		getInitialFilePaths,
-		func(path []byte) (*concurrency.Item[*extractParams, [][]byte], error) {
-			src, err := sha1Digest(toMasterTablePath(string(path)), digestSalt)
-			if err != nil {
-				return nil, err
-			}
-			dest := addExt(filepath.FromSlash(string(path)), ".json")
-
-			return &concurrency.Item[*extractParams, [][]byte]{
-				Data: &extractParams{
-					src:     filepath.Join(extractor.config.Workdir, dumpDir, dumpAssetDir, src[0:2], src[2:]),
-					dest:    filepath.Join(extractor.config.Workdir, outputDir, outputOrderedMapDir, dest),
-					extract: encoding.OrderedmapToJSON,
-					output:  findAllPaths,
-				},
-				Output: nil,
-				Err:    nil,
-			}, nil
-		},
-	)
-}
-
-func (extractor *Extractor) extractActionDSLAMF3() error {
-	return extractor.extract(
-		extractor.pathsByteErr,
-		func(path []byte) (*concurrency.Item[*extractParams, [][]byte], error) {
-			src, err := sha1Digest(addExt(string(path), ".action.dsl.amf3.deflate"), digestSalt)
-			if err != nil {
-				return nil, err
-			}
-			dest := addExt(filepath.FromSlash(string(path)), ".action.dsl.json")
-
-			return &concurrency.Item[*extractParams, [][]byte]{
-				Data: &extractParams{
-					src:     filepath.Join(extractor.config.Workdir, dumpDir, dumpAssetDir, src[0:2], src[2:]),
-					dest:    filepath.Join(extractor.config.Workdir, outputDir, outputAssetsDir, dest),
-					extract: encoding.Amf3ToJSON,
-					output:  findAllPaths,
-				},
-				Output: nil,
-				Err:    nil,
-			}, nil
-		},
-	)
-}
-
 // ExtractAssets extracts assets from downloaded files.
 func (extractor *Extractor) ExtractAssets() error {
-	log.Println("Extracting master tables")
-	err := extractor.extractMasterTable()
+	log.Println("Extracting assets")
+	return extractor.extract()
+}
+
+type extractParams struct {
+	path    string
+	parsers []parser
+	config  *ExtractorConfig
+}
+
+func extractPath(i *concurrency.Item[*extractParams, [][]byte]) ([][]byte, error) {
+	var output [][][]byte
+	for _, p := range i.Data.parsers {
+		o, err := extractFile(i.Data.path, p, i.Data.config)
+		if err != nil {
+			return nil, err
+		}
+		output = append(output, o)
+	}
+	return encoding.Flatten(output), nil
+}
+
+func extractFile(path string, p parser, config *ExtractorConfig) ([][]byte, error) {
+	src, err := p.getSrc(path, config)
 	if err != nil {
-		return err
+		return nil, err
+	}
+	dest, err := p.getDest(path, config)
+	if err != nil {
+		return nil, err
 	}
 
-	log.Println("Extracting Action DSL files")
-	return extractor.extractActionDSLAMF3()
+	srcFile, err := os.Open(src)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	defer func() {
+		err := srcFile.Close()
+		if err != nil {
+			panic(err)
+		}
+	}()
+
+	data, err := io.ReadAll(srcFile)
+	if err != nil {
+		return nil, err
+	}
+	data, err = p.parse(data, config)
+	if err != nil {
+		return nil, err
+	}
+
+	os.MkdirAll(filepath.Dir(dest), 0755)
+	destFile, err := os.OpenFile(dest, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0666)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		err := destFile.Close()
+		if err != nil {
+			panic(err)
+		}
+	}()
+
+	_, err = io.Copy(destFile, bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+
+	return p.output(data, config)
 }

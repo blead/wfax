@@ -8,9 +8,44 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
+	"regexp"
 	"strings"
+
+	"github.com/blead/wfax/assets"
 )
+
+const (
+	dumpDir             = "dump"
+	dumpAssetDir        = "upload"
+	outputDir           = "output"
+	outputOrderedMapDir = "orderedmap"
+	outputAssetsDir     = "assets"
+)
+
+func getInitialFilePaths() ([][]byte, error) {
+	var paths [][]byte
+	pattern := regexp.MustCompile(`"path":"(.*)"`)
+	matches := pattern.FindAllSubmatch(assets.BootFFC6, -1)
+	for _, match := range matches {
+		paths = append(paths, match[1])
+	}
+	return paths, nil
+}
+
+func addExt(p string, ext string) string {
+	return path.Clean(p + ext)
+}
+
+func toMasterTablePath(p string) string {
+	return path.Clean(addExt(path.Join("master", p), ".orderedmap"))
+}
+
+func findAllPaths(b []byte) ([][]byte, error) {
+	pattern := regexp.MustCompile(`[.$a-zA-Z_0-9]+?/[.$a-zA-Z_0-9/]+`)
+	return pattern.FindAll(b, -1), nil
+}
 
 func sha256Checksum(reader io.Reader) ([]byte, error) {
 	h := sha256.New()
