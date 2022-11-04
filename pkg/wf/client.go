@@ -126,19 +126,19 @@ func (client *Client) fetchMetadata() ([]byte, error) {
 	return output.Bytes(), nil
 }
 
-type asset struct {
+type assetMetadata struct {
 	location string
 	size     int
 	sha256   string
 }
 
-func (client *Client) parseMetadata(json []byte) (string, []*asset, error) {
+func (client *Client) parseMetadata(json []byte) (string, []*assetMetadata, error) {
 	jsonParsed, err := gabs.ParseJSON(json)
 	if err != nil {
 		return "", nil, err
 	}
 	if !jsonParsed.ExistsP("data.info") {
-		return "", []*asset{}, nil
+		return "", []*assetMetadata{}, nil
 	}
 
 	version, ok := jsonParsed.Path("data.info.eventual_target_asset_version").Data().(string)
@@ -146,10 +146,10 @@ func (client *Client) parseMetadata(json []byte) (string, []*asset, error) {
 		return "", nil, fmt.Errorf("unable to parse latest version number")
 	}
 
-	var assets []*asset
+	var assets []*assetMetadata
 	if client.config.Mode == FullAssets {
 		for _, child := range jsonParsed.Path("data.full.archive").Children() {
-			assets = append(assets, &asset{
+			assets = append(assets, &assetMetadata{
 				location: child.Path("location").Data().(string),
 				size:     int(child.Path("size").Data().(float64)),
 				sha256:   child.Path("sha256").Data().(string),
@@ -158,7 +158,7 @@ func (client *Client) parseMetadata(json []byte) (string, []*asset, error) {
 	} else {
 		for _, group := range jsonParsed.Search("data", "diff", "*", "archive").Children() {
 			for _, child := range group.Children() {
-				assets = append(assets, &asset{
+				assets = append(assets, &assetMetadata{
 					location: child.Path("location").Data().(string),
 					size:     int(child.Path("size").Data().(float64)),
 					sha256:   child.Path("sha256").Data().(string),
@@ -170,7 +170,7 @@ func (client *Client) parseMetadata(json []byte) (string, []*asset, error) {
 	return version, assets, nil
 }
 
-func (client *Client) downloadAndExtract(i *concurrency.Item[*asset, any]) (any, error) {
+func (client *Client) downloadAndExtract(i *concurrency.Item[*assetMetadata, any]) (any, error) {
 	a := i.Data
 	resp, err := retryablehttp.Get(a.location)
 	if err != nil {
@@ -213,21 +213,22 @@ func (client *Client) downloadAndExtract(i *concurrency.Item[*asset, any]) (any,
 	return nil, err
 }
 
-func (client *Client) fetch(assets []*asset) error {
-	var items []*concurrency.Item[*asset, any]
+func (client *Client) fetch(assets []*assetMetadata) error {
+	var items []*concurrency.Item[*assetMetadata, any]
 	for _, a := range assets {
-		items = append(items, &concurrency.Item[*asset, any]{
+		items = append(items, &concurrency.Item[*assetMetadata, any]{
 			Data:   a,
 			Output: nil,
 			Err:    nil,
 		})
 	}
 
-	return concurrency.Execute[*asset, any](client.downloadAndExtract, items, client.config.Concurrency)
+	return concurrency.Execute(client.downloadAndExtract, items, client.config.Concurrency)
 }
 
 // FetchAssetsFromAPI fetches metadata from API then download and extract the assets archives.
 func (client *Client) FetchAssetsFromAPI() error {
+	log.Println("Fetching asset metadata")
 	metadata, err := client.fetchMetadata()
 	if err != nil {
 		return err
@@ -239,8 +240,15 @@ func (client *Client) FetchAssetsFromAPI() error {
 	}
 	if len(assets) == 0 {
 		log.Println("no new assets for version " + client.config.Version)
+		fmt.Println(latestVersion)
 	}
 
 	log.Println("fetching assets for version " + latestVersion)
-	return client.fetch(assets)
+	err = client.fetch(assets)
+	if err != nil {
+		return err
+	}
+
+	fmt.Println(latestVersion)
+	return nil
 }

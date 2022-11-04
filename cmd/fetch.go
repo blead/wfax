@@ -13,7 +13,7 @@ var fetchConcurrency int
 
 var fetchCmd = &cobra.Command{
 	Use:   "fetch [target dir]",
-	Short: "Fetch assets from API to the target directory",
+	Short: "Fetch assets from API to the target directory and print latest version number to stdout",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		config := wf.ClientConfig{
