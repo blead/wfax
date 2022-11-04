@@ -28,7 +28,7 @@ func (_ *orderedmapParser) getDest(path string, config *ExtractorConfig) (string
 }
 
 func (_ *orderedmapParser) parse(raw []byte, config *ExtractorConfig) ([]byte, error) {
-	return encoding.OrderedmapToJSON(raw, config.FlattenCSV)
+	return encoding.OrderedmapToJSON(raw, config.Indent, config.FlattenCSV)
 }
 
 func (_ *orderedmapParser) output(raw []byte, config *ExtractorConfig) ([][]byte, error) {
@@ -50,7 +50,7 @@ func (_ *actionDSLAMF3Parser) getDest(path string, config *ExtractorConfig) (str
 }
 
 func (_ *actionDSLAMF3Parser) parse(raw []byte, config *ExtractorConfig) ([]byte, error) {
-	return encoding.Amf3ToJSON(raw)
+	return encoding.Amf3ToJSON(raw, config.Indent)
 }
 
 func (_ *actionDSLAMF3Parser) output(raw []byte, config *ExtractorConfig) ([][]byte, error) {

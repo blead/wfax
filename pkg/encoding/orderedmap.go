@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"encoding/csv"
 	"encoding/json"
+	"strings"
 
 	omap "github.com/iancoleman/orderedmap"
 )
@@ -97,10 +98,19 @@ func readOrderedMap(raw []byte, flattenCSV bool) (json.Marshaler, error) {
 }
 
 // OrderedmapToJSON converts WF orderedmap to JSON
-func OrderedmapToJSON(raw []byte, flattenCSV bool) ([]byte, error) {
+func OrderedmapToJSON(raw []byte, indent int, flattenCSV bool) ([]byte, error) {
 	om, err := readOrderedMap(raw, flattenCSV)
 	if err != nil {
 		return nil, err
 	}
-	return jsonMarshalNoEscape(om)
+
+	js, err := jsonMarshalNoEscape(om)
+	if err != nil {
+		return nil, err
+	}
+
+	var output bytes.Buffer
+	err = json.Indent(&output, js, "", strings.Repeat(" ", indent))
+
+	return output.Bytes(), err
 }

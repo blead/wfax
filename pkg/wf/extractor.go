@@ -24,6 +24,7 @@ type ExtractorConfig struct {
 	SrcPath     string
 	DestPath    string
 	Concurrency int
+	Indent      int
 	FlattenCSV  bool
 }
 
@@ -33,6 +34,7 @@ func DefaultExtractorConfig() *ExtractorConfig {
 		SrcPath:     "",
 		DestPath:    "",
 		Concurrency: 5,
+		Indent:      0,
 		FlattenCSV:  false,
 	}
 }

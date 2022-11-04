@@ -8,6 +8,7 @@ import (
 )
 
 var extractConcurrency int
+var extractIndent int
 var extractFlattenCSV bool
 
 var extractCmd = &cobra.Command{
@@ -20,6 +21,7 @@ var extractCmd = &cobra.Command{
 			SrcPath:     filepath.Clean(args[0]),
 			DestPath:    filepath.Clean(args[1]),
 			Concurrency: extractConcurrency,
+			Indent:      extractIndent,
 			FlattenCSV:  extractFlattenCSV,
 		}
 
@@ -38,5 +40,6 @@ var extractCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(extractCmd)
 	extractCmd.Flags().IntVarP(&extractConcurrency, "concurrency", "c", 5, "Maximum number of concurrent file extractions")
+	extractCmd.Flags().IntVarP(&extractIndent, "indent", "i", 0, "Number of spaces used as indentation in extracted JSON")
 	extractCmd.Flags().BoolVarP(&extractFlattenCSV, "flatten-csv", "f", false, "Ignore newlines in multi-line CSVs")
 }
