@@ -6,6 +6,7 @@ require (
 	github.com/Jeffail/gabs/v2 v2.6.1
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/hashicorp/go-retryablehttp v0.7.1
+	github.com/hashicorp/logutils v1.0.0
 	github.com/iancoleman/orderedmap v0.2.0
 	github.com/remyoudompheng/goamf v0.0.0-20171008193039-e340f13844ae
 	github.com/spf13/cobra v1.6.1
