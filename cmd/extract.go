@@ -38,5 +38,5 @@ var extractCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(extractCmd)
 	extractCmd.Flags().IntVarP(&extractConcurrency, "concurrency", "c", 5, "Maximum number of concurrent file extractions")
-	extractCmd.Flags().BoolVarP(&extractFlattenCSV, "flatten-csv", "f", true, "Ignore newlines in multi-line CSVs")
+	extractCmd.Flags().BoolVarP(&extractFlattenCSV, "flatten-csv", "f", false, "Ignore newlines in multi-line CSVs")
 }
