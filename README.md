@@ -21,10 +21,10 @@ cd wfax
 go build
 ```
 
-## Quick Start
-Fetch assets into `./dump` directory and extract them into `./output`:
+## Usage
+Fetch new (`diff-only`) assets for version `1.600.0` into `./dump` directory and extract them with `2` spaces indentation into `./output`:
 ```sh
-wfax fetch . && wfax extract .
+wfax fetch --diff-only --version 1.600.0 ./dump && wfax extract --indent 2 ./dump ./output
 ```
 
 ## Supported Assets
