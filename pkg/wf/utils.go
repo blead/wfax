@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path"
 	"path/filepath"
@@ -70,12 +71,7 @@ func unzip(src io.ReaderAt, size int64, dest string, modPath func(string) string
 		if err != nil {
 			return err
 		}
-		defer func() {
-			err := zdata.Close()
-			if err != nil {
-				panic(err)
-			}
-		}()
+		defer zdata.Close()
 
 		path := filepath.Join(dest, zf.Name)
 
@@ -101,7 +97,7 @@ func unzip(src io.ReaderAt, size int64, dest string, modPath func(string) string
 		defer func() {
 			err := f.Close()
 			if err != nil {
-				panic(err)
+				log.Fatalln(err)
 			}
 		}()
 

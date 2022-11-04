@@ -126,7 +126,7 @@ func (extractor *Extractor) extract() error {
 
 // ExtractAssets extracts assets from downloaded files.
 func (extractor *Extractor) ExtractAssets() error {
-	log.Println("Extracting assets")
+	log.Println("[INFO] Extracting assets")
 	return extractor.extract()
 }
 
@@ -169,12 +169,7 @@ func extractFile(path string, p parser, config *ExtractorConfig) ([][]byte, erro
 		}
 		return nil, fmt.Errorf("open error, src=%s, dest=%s, %w", src, dest, err)
 	}
-	defer func() {
-		err := srcFile.Close()
-		if err != nil {
-			panic(err)
-		}
-	}()
+	defer srcFile.Close()
 
 	data, err := io.ReadAll(srcFile)
 	if err != nil {
@@ -193,7 +188,7 @@ func extractFile(path string, p parser, config *ExtractorConfig) ([][]byte, erro
 	defer func() {
 		err := destFile.Close()
 		if err != nil {
-			panic(err)
+			log.Fatal(fmt.Errorf("close error, src=%s, dest=%s, %w", src, dest, err))
 		}
 	}()
 

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"log"
 	"path/filepath"
 
 	"github.com/blead/wfax/pkg/wf"
@@ -27,12 +28,12 @@ var extractCmd = &cobra.Command{
 
 		extractor, err := wf.NewExtractor(&config)
 		if err != nil {
-			panic(err)
+			log.Fatalln(err)
 		}
 
 		err = extractor.ExtractAssets()
 		if err != nil {
-			panic(err)
+			log.Fatalln(err)
 		}
 	},
 }

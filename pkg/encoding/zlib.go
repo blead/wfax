@@ -11,7 +11,6 @@ func readZlib(compressed []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	// error is expected on non-zlib data; do not panic
 	defer r.Close()
 
 	return io.ReadAll(r)

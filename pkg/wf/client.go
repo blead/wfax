@@ -111,12 +111,7 @@ func (client *Client) fetchMetadata() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer func() {
-		err := resp.Body.Close()
-		if err != nil {
-			panic(err)
-		}
-	}()
+	defer resp.Body.Close()
 
 	var output bytes.Buffer
 	_, err = msgp.CopyToJSON(&output, base64.NewDecoder(base64.StdEncoding, resp.Body))
@@ -177,12 +172,7 @@ func (client *Client) downloadAndExtract(i *concurrency.Item[*assetMetadata, any
 	if err != nil {
 		return nil, err
 	}
-	defer func() {
-		err := resp.Body.Close()
-		if err != nil {
-			panic(err)
-		}
-	}()
+	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -229,7 +219,7 @@ func (client *Client) fetch(assets []*assetMetadata) error {
 
 // FetchAssetsFromAPI fetches metadata from API then download and extract the assets archives.
 func (client *Client) FetchAssetsFromAPI() error {
-	log.Println("Fetching asset metadata")
+	log.Println("[INFO] Fetching asset metadata")
 	metadata, err := client.fetchMetadata()
 	if err != nil {
 		return err
@@ -240,11 +230,11 @@ func (client *Client) FetchAssetsFromAPI() error {
 		return err
 	}
 	if len(assets) == 0 {
-		log.Println("no new assets for version " + client.config.Version)
+		log.Println("[INFO] No new assets for version " + client.config.Version)
 		fmt.Println(latestVersion)
 	}
 
-	log.Println("fetching assets for version " + latestVersion)
+	log.Println("[INFO] Fetching assets for version " + latestVersion)
 	err = client.fetch(assets)
 	if err != nil {
 		return err
