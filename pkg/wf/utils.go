@@ -61,7 +61,7 @@ func unzip(src io.ReaderAt, size int64, dest string, modPath func(string) string
 		return err
 	}
 
-	err = os.MkdirAll(dest, 0755)
+	err = os.MkdirAll(dest, 0777)
 	if err != nil {
 		return err
 	}
@@ -82,10 +82,10 @@ func unzip(src io.ReaderAt, size int64, dest string, modPath func(string) string
 		path = modPath(path)
 
 		if zf.FileInfo().IsDir() {
-			return os.MkdirAll(path, zf.Mode())
+			return os.MkdirAll(path, 0777)
 		}
 
-		err = os.MkdirAll(filepath.Dir(path), zf.Mode())
+		err = os.MkdirAll(filepath.Dir(path), 0777)
 		if err != nil {
 			return err
 		}

@@ -180,7 +180,7 @@ func extractFile(path string, p parser, config *ExtractorConfig) ([][]byte, erro
 		return nil, fmt.Errorf("parsing error, src=%s, dest=%s, %w", src, dest, err)
 	}
 
-	os.MkdirAll(filepath.Dir(dest), 0755)
+	os.MkdirAll(filepath.Dir(dest), 0777)
 	destFile, err := os.OpenFile(dest, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0666)
 	if err != nil {
 		return nil, fmt.Errorf("mkdir error, src=%s, dest=%s, %w", src, dest, err)
