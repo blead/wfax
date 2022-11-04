@@ -3,6 +3,7 @@ package wf
 import (
 	"bytes"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -23,6 +24,8 @@ const (
 	apiAssetJp     = "https://api.worldflipper.jp/latest/api/index.php/gacha/exec"
 	dumpAssetDir   = "upload"
 )
+
+var ErrNoNewAssets = errors.New("no new assets")
 
 // AssetListMode specifies whether to retrive full asset list or diff only.
 type AssetListMode int
@@ -85,9 +88,12 @@ func NewClient(config *ClientConfig) (*Client, error) {
 		config.Concurrency = 5
 	}
 
+	client := retryablehttp.NewClient()
+	client.Logger = log.Default()
+
 	return &Client{
 		config: config,
-		client: retryablehttp.NewClient(),
+		client: client,
 		header: clientHeader(config.Version),
 	}, nil
 }
@@ -168,7 +174,7 @@ func (client *Client) parseMetadata(json []byte) (string, []*assetMetadata, erro
 
 func (client *Client) downloadAndExtract(i *concurrency.Item[*assetMetadata, any]) (any, error) {
 	a := i.Data
-	resp, err := retryablehttp.Get(a.location)
+	resp, err := client.client.Get(a.location)
 	if err != nil {
 		return nil, err
 	}
@@ -231,7 +237,7 @@ func (client *Client) FetchAssetsFromAPI() error {
 	}
 	if len(assets) == 0 {
 		log.Println("[INFO] No new assets")
-		fmt.Println(latestVersion)
+		return ErrNoNewAssets
 	}
 
 	log.Printf("[INFO] Fetching assets, clientVersion=%s, latestVersion=%s\n", client.config.Version, latestVersion)

@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"log"
+	"os"
 	"path/filepath"
 
 	"github.com/blead/wfax/pkg/wf"
@@ -35,6 +36,9 @@ var fetchCmd = &cobra.Command{
 
 		err = client.FetchAssetsFromAPI()
 		if err != nil {
+			if err == wf.ErrNoNewAssets {
+				os.Exit(1)
+			}
 			log.Fatalln(err)
 		}
 	},
