@@ -219,7 +219,7 @@ func (client *Client) fetch(assets []*assetMetadata) error {
 
 // FetchAssetsFromAPI fetches metadata from API then download and extract the assets archives.
 func (client *Client) FetchAssetsFromAPI() error {
-	log.Println("[INFO] Fetching asset metadata")
+	log.Println("[INFO] Fetching asset metadata, clientVersion=" + client.config.Version)
 	metadata, err := client.fetchMetadata()
 	if err != nil {
 		return err
@@ -230,11 +230,11 @@ func (client *Client) FetchAssetsFromAPI() error {
 		return err
 	}
 	if len(assets) == 0 {
-		log.Println("[INFO] No new assets for version " + client.config.Version)
+		log.Println("[INFO] No new assets")
 		fmt.Println(latestVersion)
 	}
 
-	log.Println("[INFO] Fetching assets for version " + latestVersion)
+	log.Printf("[INFO] Fetching assets, clientVersion=%s, latestVersion=%s\n", client.config.Version, latestVersion)
 	err = client.fetch(assets)
 	if err != nil {
 		return err
