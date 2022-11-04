@@ -101,7 +101,7 @@ func (extractor *Extractor) extract() error {
 		}
 
 		items = newItems
-		err = concurrency.Execute[*extractParams, [][]byte](extractPath, items, extractor.config.Concurrency)
+		err = concurrency.Execute(extractPath, items, extractor.config.Concurrency)
 		if err != nil {
 			return err
 		}
@@ -128,7 +128,10 @@ func extractPath(i *concurrency.Item[*extractParams, [][]byte]) ([][]byte, error
 		if err != nil {
 			return nil, err
 		}
-		output = append(output, o)
+		// o = nil if file does not exist with format p
+		if o != nil {
+			output = append(output, o)
+		}
 	}
 	return encoding.Flatten(output), nil
 }
@@ -145,10 +148,11 @@ func extractFile(path string, p parser, config *ExtractorConfig) ([][]byte, erro
 
 	srcFile, err := os.Open(src)
 	if err != nil {
+		// return nil if srcFile does not exist
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, nil
 		}
-		return nil, err
+		return nil, fmt.Errorf("open error, src=%s, dest=%s, %w", src, dest, err)
 	}
 	defer func() {
 		err := srcFile.Close()
@@ -159,17 +163,17 @@ func extractFile(path string, p parser, config *ExtractorConfig) ([][]byte, erro
 
 	data, err := io.ReadAll(srcFile)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("read error, src=%s, dest=%s, %w", src, dest, err)
 	}
 	data, err = p.parse(data, config)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parsing error, src=%s, dest=%s, %w", src, dest, err)
 	}
 
 	os.MkdirAll(filepath.Dir(dest), 0755)
 	destFile, err := os.OpenFile(dest, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0666)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("mkdir error, src=%s, dest=%s, %w", src, dest, err)
 	}
 	defer func() {
 		err := destFile.Close()
@@ -180,7 +184,7 @@ func extractFile(path string, p parser, config *ExtractorConfig) ([][]byte, erro
 
 	_, err = io.Copy(destFile, bytes.NewReader(data))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("write error, src=%s, dest=%s, %w", src, dest, err)
 	}
 
 	return p.output(data, config)

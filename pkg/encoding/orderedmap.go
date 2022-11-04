@@ -15,6 +15,7 @@ type orderedMapOffset struct {
 }
 
 func readOrderedMap(raw []byte) (json.Marshaler, error) {
+	// data can be plain zlib-compressed csv or map structure
 	data, err := readZlib(raw)
 	if err == nil {
 		// data is zlib-compressed csv
@@ -30,27 +31,31 @@ func readOrderedMap(raw []byte) (json.Marshaler, error) {
 		return json.RawMessage(output), nil
 	}
 
+	// map structure
+	// first 4 bytes = header size in little endian
 	var headerSize int32
 	err = binary.Read(bytes.NewReader(raw[0:4]), binary.LittleEndian, &headerSize)
 	if err != nil {
 		return nil, err
 	}
 
+	// header is zlib-compressed
 	header, err := readZlib(raw[4 : 4+headerSize])
 	if err != nil {
 		return nil, err
 	}
 
+	// first 4 bytes of header = number of mapped entries
 	var entriesCount int32
 	err = binary.Read(bytes.NewReader(header[0:4]), binary.LittleEndian, &entriesCount)
 	if err != nil {
 		return nil, err
 	}
 
+	// offsets = header[4:4 + entriesCount*8], each entry = (keyEndOffset, valueEndOffset) (4 + 4 bytes)
 	var offsets []*orderedMapOffset
 	for i := int32(0); i < entriesCount; i++ {
 		offset := orderedMapOffset{}
-		// start at header[4], each entry has 2 values, 4 bytes each
 		err = binary.Read(bytes.NewReader(header[4+i*8:4+i*8+8]), binary.LittleEndian, &offset)
 		if err != nil {
 			return nil, err
@@ -58,31 +63,26 @@ func readOrderedMap(raw []byte) (json.Marshaler, error) {
 		offsets = append(offsets, &offset)
 	}
 
-	// start at header[4 + entriesCount*8], each key ends at header[4 + entriesCount*8 + KeyEndOffset]
+	// keySection = header[4 + entriesCount*8], each key = keySection[prevKeyEndOffset:KeyEndOffset]
+	// valueSection = header[4 + headerSize], each value = valueSection[prevValueEndOffset:ValueEndOffset]
 	keySection := header[4+entriesCount*8:]
-	var keys [][]byte
-	currentOffset := int32(0)
-	for _, offset := range offsets {
-		keys = append(keys, keySection[currentOffset:offset.KeyEndOffset])
-		currentOffset = offset.KeyEndOffset
-	}
-
 	valueSection := raw[4+headerSize:]
-	var values [][]byte
-	currentOffset = int32(0)
-	for _, offset := range offsets {
-		values = append(values, valueSection[currentOffset:offset.ValueEndOffset])
-		currentOffset = offset.ValueEndOffset
-	}
-
+	currentKeyOffset := int32(0)
+	currentValueOffset := int32(0)
 	output := omap.New()
 	output.SetEscapeHTML(false)
-	for i, key := range keys {
-		value, err := readOrderedMap(values[i])
+	for _, offset := range offsets {
+		key := keySection[currentKeyOffset:offset.KeyEndOffset]
+		value := valueSection[currentValueOffset:offset.ValueEndOffset]
+		currentKeyOffset = offset.KeyEndOffset
+		currentValueOffset = offset.ValueEndOffset
+
+		// value is a nested orderedmap
+		om, err := readOrderedMap(value)
 		if err != nil {
 			return nil, err
 		}
-		output.Set(string(key), value)
+		output.Set(string(key), om)
 	}
 
 	return output, nil
