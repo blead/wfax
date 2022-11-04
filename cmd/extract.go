@@ -8,16 +8,19 @@ import (
 )
 
 var extractConcurrency int
+var extractFlattenCSV bool
 
 var extractCmd = &cobra.Command{
-	Use:   "extract [target dir]",
-	Short: "Extract files into readable format",
-	Args:  cobra.ExactArgs(1),
+	Use:   "extract [src] [dest]",
+	Short: "Extract files from src into readable format at dest",
+	Args:  cobra.ExactArgs(2),
 	Run: func(cmd *cobra.Command, args []string) {
 
 		config := wf.ExtractorConfig{
-			Workdir:     filepath.Clean(args[0]),
+			SrcPath:     filepath.Clean(args[0]),
+			DestPath:    filepath.Clean(args[1]),
 			Concurrency: extractConcurrency,
+			FlattenCSV:  extractFlattenCSV,
 		}
 
 		extractor, err := wf.NewExtractor(&config)
@@ -35,4 +38,5 @@ var extractCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(extractCmd)
 	extractCmd.Flags().IntVarP(&extractConcurrency, "concurrency", "c", 5, "Maximum number of concurrent file extractions")
+	extractCmd.Flags().BoolVarP(&extractFlattenCSV, "flatten-csv", "f", true, "Ignore newlines in multi-line CSVs")
 }

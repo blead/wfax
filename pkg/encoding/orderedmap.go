@@ -14,7 +14,7 @@ type orderedMapOffset struct {
 	ValueEndOffset int32
 }
 
-func readOrderedMap(raw []byte) (json.Marshaler, error) {
+func readOrderedMap(raw []byte, flattenCSV bool) (json.Marshaler, error) {
 	// data can be plain zlib-compressed csv or map structure
 	data, err := readZlib(raw)
 	if err == nil {
@@ -24,7 +24,15 @@ func readOrderedMap(raw []byte) (json.Marshaler, error) {
 		if err != nil {
 			return nil, err
 		}
-		output, err := jsonMarshalNoEscape(Flatten(rec))
+
+		output, err := jsonMarshalNoEscape(
+			func() any {
+				if flattenCSV {
+					return Flatten(rec)
+				}
+				return rec
+			}(),
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -78,7 +86,7 @@ func readOrderedMap(raw []byte) (json.Marshaler, error) {
 		currentValueOffset = offset.ValueEndOffset
 
 		// value is a nested orderedmap
-		om, err := readOrderedMap(value)
+		om, err := readOrderedMap(value, flattenCSV)
 		if err != nil {
 			return nil, err
 		}
@@ -89,8 +97,8 @@ func readOrderedMap(raw []byte) (json.Marshaler, error) {
 }
 
 // OrderedmapToJSON converts WF orderedmap to JSON
-func OrderedmapToJSON(raw []byte) ([]byte, error) {
-	om, err := readOrderedMap(raw)
+func OrderedmapToJSON(raw []byte, flattenCSV bool) ([]byte, error) {
+	om, err := readOrderedMap(raw, flattenCSV)
 	if err != nil {
 		return nil, err
 	}

@@ -20,15 +20,15 @@ func (_ *orderedmapParser) getSrc(path string, config *ExtractorConfig) (string,
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(config.Workdir, dumpDir, dumpAssetDir, src[0:2], src[2:]), nil
+	return filepath.Join(config.SrcPath, dumpAssetDir, src[0:2], src[2:]), nil
 }
 
 func (_ *orderedmapParser) getDest(path string, config *ExtractorConfig) (string, error) {
-	return filepath.Join(config.Workdir, outputDir, outputOrderedMapDir, addExt(filepath.FromSlash(path), ".json")), nil
+	return filepath.Join(config.DestPath, outputOrderedMapDir, addExt(filepath.FromSlash(path), ".json")), nil
 }
 
 func (_ *orderedmapParser) parse(raw []byte, config *ExtractorConfig) ([]byte, error) {
-	return encoding.OrderedmapToJSON(raw)
+	return encoding.OrderedmapToJSON(raw, config.FlattenCSV)
 }
 
 func (_ *orderedmapParser) output(raw []byte, config *ExtractorConfig) ([][]byte, error) {
@@ -42,11 +42,11 @@ func (_ *actionDSLAMF3Parser) getSrc(path string, config *ExtractorConfig) (stri
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(config.Workdir, dumpDir, dumpAssetDir, src[0:2], src[2:]), nil
+	return filepath.Join(config.SrcPath, dumpAssetDir, src[0:2], src[2:]), nil
 }
 
 func (_ *actionDSLAMF3Parser) getDest(path string, config *ExtractorConfig) (string, error) {
-	return filepath.Join(config.Workdir, outputDir, outputAssetsDir, addExt(filepath.FromSlash(path), ".action.dsl.json")), nil
+	return filepath.Join(config.DestPath, outputAssetsDir, addExt(filepath.FromSlash(path), ".action.dsl.json")), nil
 }
 
 func (_ *actionDSLAMF3Parser) parse(raw []byte, config *ExtractorConfig) ([]byte, error) {

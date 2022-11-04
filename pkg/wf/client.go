@@ -21,6 +21,7 @@ const (
 	defaultVersion = "0.0.0"
 	apiHostJp      = "https://api.worldflipper.jp/latest/api/index.php"
 	apiAssetJp     = "https://api.worldflipper.jp/latest/api/index.php/gacha/exec"
+	dumpAssetDir   = "upload"
 )
 
 // AssetListMode specifies whether to retrive full asset list or diff only.
@@ -205,7 +206,7 @@ func (client *Client) downloadAndExtract(i *concurrency.Item[*assetMetadata, any
 	err = unzip(
 		bytes.NewReader(body),
 		int64(len(body)),
-		filepath.Join(client.config.Workdir, dumpDir),
+		client.config.Workdir,
 		func(path string) string {
 			pattern := regexp.MustCompile(`production/[^/]*`)
 			return filepath.FromSlash(pattern.ReplaceAllLiteralString(filepath.ToSlash(path), dumpAssetDir))

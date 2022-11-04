@@ -14,20 +14,26 @@ import (
 )
 
 const (
-	digestSalt = "K6R9T9Hz22OpeIGEWB0ui6c6PYFQnJGy"
+	digestSalt          = "K6R9T9Hz22OpeIGEWB0ui6c6PYFQnJGy"
+	outputAssetsDir     = "assets"
+	outputOrderedMapDir = "orderedmap"
 )
 
 // ExtractorConfig is the configuration for the extractor.
 type ExtractorConfig struct {
-	Workdir     string
+	SrcPath     string
+	DestPath    string
 	Concurrency int
+	FlattenCSV  bool
 }
 
 // DefaultExtractorConfig generates a default configuration.
 func DefaultExtractorConfig() *ExtractorConfig {
 	return &ExtractorConfig{
-		Workdir:     "",
+		SrcPath:     "",
+		DestPath:    "",
 		Concurrency: 5,
+		FlattenCSV:  false,
 	}
 }
 
@@ -49,12 +55,19 @@ func NewExtractor(config *ExtractorConfig) (*Extractor, error) {
 	if config == nil {
 		config = def
 	}
-	if config.Workdir == "" {
+	if config.SrcPath == "" {
 		wd, err := os.Getwd()
 		if err != nil {
 			return nil, err
 		}
-		config.Workdir = wd
+		config.SrcPath = wd
+	}
+	if config.DestPath == "" {
+		wd, err := os.Getwd()
+		if err != nil {
+			return nil, err
+		}
+		config.DestPath = wd
 	}
 	if config.Concurrency == 0 {
 		config.Concurrency = 5

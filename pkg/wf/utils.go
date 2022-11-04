@@ -16,14 +16,6 @@ import (
 	"github.com/blead/wfax/assets"
 )
 
-const (
-	dumpDir             = "dump"
-	dumpAssetDir        = "upload"
-	outputDir           = "output"
-	outputOrderedMapDir = "orderedmap"
-	outputAssetsDir     = "assets"
-)
-
 func getInitialFilePaths() ([][]byte, error) {
 	var paths [][]byte
 	pattern := regexp.MustCompile(`"path":"(.*)"`)
