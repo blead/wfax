@@ -57,14 +57,14 @@ func NewExtractor(config *ExtractorConfig) (*Extractor, error) {
 	if config == nil {
 		config = def
 	}
-	if config.SrcPath == "" {
+	if config.SrcPath == "" || config.SrcPath == "." {
 		wd, err := os.Getwd()
 		if err != nil {
 			return nil, err
 		}
 		config.SrcPath = wd
 	}
-	if config.DestPath == "" {
+	if config.DestPath == "" || config.DestPath == "." {
 		wd, err := os.Getwd()
 		if err != nil {
 			return nil, err

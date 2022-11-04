@@ -77,7 +77,7 @@ func NewClient(config *ClientConfig) (*Client, error) {
 	if config.Version == "" {
 		config.Version = defaultVersion
 	}
-	if config.Workdir == "" {
+	if config.Workdir == "" || config.Workdir == "." {
 		wd, err := os.Getwd()
 		if err != nil {
 			return nil, err
