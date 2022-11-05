@@ -220,7 +220,11 @@ func (client *Client) fetch(assets []*assetMetadata) error {
 		})
 	}
 
-	return concurrency.Execute(client.downloadAndExtract, items, client.config.Concurrency)
+	con := client.config.Concurrency
+	if len(items) < con {
+		con = len(items)
+	}
+	return concurrency.Execute(client.downloadAndExtract, items, con)
 }
 
 // FetchAssetsFromAPI fetches metadata from API then download and extract the assets archives.
