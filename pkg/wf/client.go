@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 
@@ -61,6 +62,7 @@ type Client struct {
 	config *ClientConfig
 	client *retryablehttp.Client
 	header *http.Header
+	tmpDir string
 }
 
 // NewClient creates a new client with the supplied configuration.
@@ -172,7 +174,7 @@ func (client *Client) parseMetadata(json []byte) (string, []*assetMetadata, erro
 	return version, assets, nil
 }
 
-func (client *Client) downloadAndExtract(i *concurrency.Item[*assetMetadata, any]) (any, error) {
+func (client *Client) download(i *concurrency.Item[*assetMetadata, any]) (any, error) {
 	a := i.Data
 	resp, err := client.client.Get(a.location)
 	if err != nil {
@@ -198,10 +200,39 @@ func (client *Client) downloadAndExtract(i *concurrency.Item[*assetMetadata, any
 		return nil, fmt.Errorf("sha256 mismatch, expected: %x, downloaded: %x", expected, downloaded)
 	}
 
-	// extract zip
+	dest := filepath.Join(client.tmpDir, path.Base(a.location))
+	destFile, err := os.OpenFile(dest, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0666)
+	if err != nil {
+		return nil, fmt.Errorf("open error, path=%s, %w", dest, err)
+	}
+	defer func() {
+		err := destFile.Close()
+		if err != nil {
+			log.Fatal(fmt.Errorf("close error, path=%s, %w", dest, err))
+		}
+	}()
+
+	_, err = io.Copy(destFile, bytes.NewReader(body))
+	return nil, err
+}
+
+func (client *Client) extract(i *concurrency.Item[*assetMetadata, any]) (any, error) {
+	a := i.Data
+	src := filepath.Join(client.tmpDir, path.Base(a.location))
+	srcFile, err := os.Open(src)
+	if err != nil {
+		return nil, fmt.Errorf("open error, src=%s, %w", src, err)
+	}
+	defer srcFile.Close()
+
+	zdata, err := io.ReadAll(srcFile)
+	if err != nil {
+		return nil, err
+	}
+
 	err = unzip(
-		bytes.NewReader(body),
-		int64(len(body)),
+		bytes.NewReader(zdata),
+		int64(len(zdata)),
 		client.config.Workdir,
 		func(path string) string {
 			pattern := regexp.MustCompile(`production/[^/]*`)
@@ -210,7 +241,7 @@ func (client *Client) downloadAndExtract(i *concurrency.Item[*assetMetadata, any
 	return nil, err
 }
 
-func (client *Client) fetch(assets []*assetMetadata) error {
+func (client *Client) downloadAndExtract(assets []*assetMetadata) error {
 	var items []*concurrency.Item[*assetMetadata, any]
 	for _, a := range assets {
 		items = append(items, &concurrency.Item[*assetMetadata, any]{
@@ -220,11 +251,29 @@ func (client *Client) fetch(assets []*assetMetadata) error {
 		})
 	}
 
+	tmpDir, err := os.MkdirTemp(client.config.Workdir, "fetchtmp")
+	if err != nil {
+		return err
+	}
+	defer func() {
+		err := os.RemoveAll(tmpDir)
+		if err != nil {
+			log.Fatal(fmt.Errorf("remove error, path=%s, %w", tmpDir, err))
+		}
+	}()
+
+	client.tmpDir = tmpDir
 	con := client.config.Concurrency
 	if len(items) < con {
 		con = len(items)
 	}
-	return concurrency.Execute(client.downloadAndExtract, items, con)
+
+	err = concurrency.Execute(client.download, items, con)
+	if err != nil {
+		return err
+	}
+
+	return concurrency.Execute(client.extract, items, con)
 }
 
 // FetchAssetsFromAPI fetches metadata from API then download and extract the assets archives.
@@ -245,7 +294,7 @@ func (client *Client) FetchAssetsFromAPI() error {
 	}
 
 	log.Printf("[INFO] Fetching assets, clientVersion=%s, latestVersion=%s\n", client.config.Version, latestVersion)
-	err = client.fetch(assets)
+	err = client.downloadAndExtract(assets)
 	if err != nil {
 		return err
 	}
