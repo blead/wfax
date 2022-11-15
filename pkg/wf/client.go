@@ -277,7 +277,13 @@ func (client *Client) downloadAndExtract(assets []*assetMetadata) error {
 		return err
 	}
 
-	return concurrency.Execute(client.extract, items, con)
+	for _, i := range items {
+		_, err := client.extract(i)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // FetchAssetsFromAPI fetches metadata from API then download and extract the assets archives.
