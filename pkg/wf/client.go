@@ -251,6 +251,10 @@ func (client *Client) downloadAndExtract(assets []*assetMetadata) error {
 		})
 	}
 
+	err := os.MkdirAll(client.config.Workdir, 0777)
+	if err != nil {
+		return err
+	}
 	tmpDir, err := os.MkdirTemp(client.config.Workdir, "fetchtmp")
 	if err != nil {
 		return err
