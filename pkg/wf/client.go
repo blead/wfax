@@ -59,18 +59,19 @@ func DefaultClientConfig() *ClientConfig {
 
 // Client communicating with WF API.
 type Client struct {
-	config *ClientConfig
-	client *retryablehttp.Client
-	header *http.Header
-	tmpDir string
+	config     *ClientConfig
+	client     *retryablehttp.Client
+	header     *http.Header
+	tmpDir     string
+	extractMap map[string]string
 }
 
 // NewClient creates a new client with the supplied configuration.
-// If the configuration is nil, use `DefaultClientConfig()`.
+// If the configuration is nil, use DefaultClientConfig.
 func NewClient(config *ClientConfig) (*Client, error) {
 	def := DefaultClientConfig()
 	if def == nil {
-		return nil, fmt.Errorf("default configuration is nil")
+		return nil, fmt.Errorf("NewClient: default configuration is nil")
 	}
 
 	if config == nil {
@@ -86,6 +87,7 @@ func NewClient(config *ClientConfig) (*Client, error) {
 		}
 		config.Workdir = wd
 	}
+	config.Workdir = filepath.Clean(config.Workdir)
 	if config.Concurrency == 0 {
 		config.Concurrency = 5
 	}
@@ -147,7 +149,7 @@ func (client *Client) parseMetadata(json []byte) (string, []*assetMetadata, erro
 
 	version, ok := jsonParsed.Path("data.info.eventual_target_asset_version").Data().(string)
 	if !ok {
-		return "", nil, fmt.Errorf("unable to parse latest version number")
+		return "", nil, fmt.Errorf("parseMetadata: unable to parse latest version number")
 	}
 
 	var assets []*assetMetadata
@@ -174,7 +176,12 @@ func (client *Client) parseMetadata(json []byte) (string, []*assetMetadata, erro
 	return version, assets, nil
 }
 
-func (client *Client) download(i *concurrency.Item[*assetMetadata, any]) (any, error) {
+func modPath(path string) string {
+	pattern := regexp.MustCompile(`production/[^/]*`)
+	return filepath.FromSlash(pattern.ReplaceAllLiteralString(filepath.ToSlash(path), dumpAssetDir))
+}
+
+func (client *Client) download(i *concurrency.Item[*assetMetadata, []string]) ([]string, error) {
 	a := i.Data
 	resp, err := client.client.Get(a.location)
 	if err != nil {
@@ -197,54 +204,67 @@ func (client *Client) download(i *concurrency.Item[*assetMetadata, any]) (any, e
 		return nil, err
 	}
 	if bytes.Compare(expected, downloaded) != 0 {
-		return nil, fmt.Errorf("sha256 mismatch, expected: %x, downloaded: %x", expected, downloaded)
+		return nil, fmt.Errorf("download: sha256 mismatch, expected: %x, downloaded: %x", expected, downloaded)
 	}
 
 	dest := filepath.Join(client.tmpDir, path.Base(a.location))
 	destFile, err := os.OpenFile(dest, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0666)
 	if err != nil {
-		return nil, fmt.Errorf("open error, path=%s, %w", dest, err)
+		return nil, fmt.Errorf("download: open error, path=%s, %w", dest, err)
 	}
 	defer func() {
 		err := destFile.Close()
 		if err != nil {
-			log.Fatal(fmt.Errorf("close error, path=%s, %w", dest, err))
+			log.Fatal(fmt.Errorf("download: close error, path=%s, %w", dest, err))
 		}
 	}()
 
 	_, err = io.Copy(destFile, bytes.NewReader(body))
-	return nil, err
+	if err != nil {
+		return nil, fmt.Errorf("download: write error, path=%s, %w", dest, err)
+	}
+
+	// return list of files
+	return lszip(
+		bytes.NewReader(body),
+		int64(len(body)),
+		modPath,
+	)
 }
 
-func (client *Client) extract(i *concurrency.Item[*assetMetadata, any]) (any, error) {
+func (client *Client) extract(i *concurrency.Item[*assetMetadata, []string]) ([]string, error) {
 	a := i.Data
 	src := filepath.Join(client.tmpDir, path.Base(a.location))
 	srcFile, err := os.Open(src)
 	if err != nil {
-		return nil, fmt.Errorf("open error, src=%s, %w", src, err)
+		return nil, fmt.Errorf("extract: open error, path=%s, %w", src, err)
 	}
 	defer srcFile.Close()
 
 	zdata, err := io.ReadAll(srcFile)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("extract: read error, path=%s, %w", src, err)
 	}
 
 	err = unzip(
 		bytes.NewReader(zdata),
 		int64(len(zdata)),
 		client.config.Workdir,
-		func(path string) string {
-			pattern := regexp.MustCompile(`production/[^/]*`)
-			return filepath.FromSlash(pattern.ReplaceAllLiteralString(filepath.ToSlash(path), dumpAssetDir))
-		})
+		modPath,
+		func(p string) bool {
+			if loc, ok := client.extractMap[p]; ok {
+				return loc == path.Base(i.Data.location)
+			}
+			return true
+		},
+	)
 	return nil, err
 }
 
 func (client *Client) downloadAndExtract(assets []*assetMetadata) error {
-	var items []*concurrency.Item[*assetMetadata, any]
+	var items []*concurrency.Item[*assetMetadata, []string]
 	for _, a := range assets {
-		items = append(items, &concurrency.Item[*assetMetadata, any]{
+		items = append(items, &concurrency.Item[*assetMetadata, []string]{
 			Data:   a,
 			Output: nil,
 			Err:    nil,
@@ -262,7 +282,7 @@ func (client *Client) downloadAndExtract(assets []*assetMetadata) error {
 	defer func() {
 		err := os.RemoveAll(tmpDir)
 		if err != nil {
-			log.Fatal(fmt.Errorf("remove error, path=%s, %w", tmpDir, err))
+			log.Fatal(fmt.Errorf("downloadAndExtract: remove error, path=%s, %w", tmpDir, err))
 		}
 	}()
 
@@ -277,13 +297,18 @@ func (client *Client) downloadAndExtract(assets []*assetMetadata) error {
 		return err
 	}
 
-	for _, i := range items {
-		_, err := client.extract(i)
-		if err != nil {
-			return err
+	// build extraction map to avoid overwriting newer files
+	client.extractMap = map[string]string{}
+	for i := len(items) - 1; i >= 0; i-- {
+		loc := path.Base(items[i].Data.location)
+		for _, p := range items[i].Output {
+			if _, ok := client.extractMap[p]; !ok {
+				client.extractMap[p] = loc
+			}
 		}
 	}
-	return nil
+
+	return concurrency.Execute(client.extract, items, con)
 }
 
 // FetchAssetsFromAPI fetches metadata from API then download and extract the assets archives.

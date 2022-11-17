@@ -47,11 +47,11 @@ type Extractor struct {
 }
 
 // NewExtractor creates a new extractor with the supplied configuration.
-// If the configuration is nil, use `DefaultExtractorConfig()`.
+// If the configuration is nil, use DefaultExtractorConfig.
 func NewExtractor(config *ExtractorConfig) (*Extractor, error) {
 	def := DefaultExtractorConfig()
 	if def == nil {
-		return nil, fmt.Errorf("default configuration is nil")
+		return nil, fmt.Errorf("NewExtractor: default configuration is nil")
 	}
 
 	if config == nil {
@@ -64,6 +64,7 @@ func NewExtractor(config *ExtractorConfig) (*Extractor, error) {
 		}
 		config.SrcPath = wd
 	}
+	config.SrcPath = filepath.Clean(config.SrcPath)
 	if config.DestPath == "" || config.DestPath == "." {
 		wd, err := os.Getwd()
 		if err != nil {
@@ -71,6 +72,7 @@ func NewExtractor(config *ExtractorConfig) (*Extractor, error) {
 		}
 		config.DestPath = wd
 	}
+	config.DestPath = filepath.Clean(config.DestPath)
 	if config.Concurrency == 0 {
 		config.Concurrency = 5
 	}
@@ -167,34 +169,34 @@ func extractFile(path string, p parser, config *ExtractorConfig) ([][]byte, erro
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("open error, src=%s, dest=%s, %w", src, dest, err)
+		return nil, fmt.Errorf("extractFile: src open error, src=%s, dest=%s, %w", src, dest, err)
 	}
 	defer srcFile.Close()
 
 	data, err := io.ReadAll(srcFile)
 	if err != nil {
-		return nil, fmt.Errorf("read error, src=%s, dest=%s, %w", src, dest, err)
+		return nil, fmt.Errorf("extractFile: src read error, src=%s, dest=%s, %w", src, dest, err)
 	}
 	data, err = p.parse(data, config)
 	if err != nil {
-		return nil, fmt.Errorf("parsing error, src=%s, dest=%s, %w", src, dest, err)
+		return nil, fmt.Errorf("extractFile: src parse error, src=%s, dest=%s, %w", src, dest, err)
 	}
 
 	os.MkdirAll(filepath.Dir(dest), 0777)
 	destFile, err := os.OpenFile(dest, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0666)
 	if err != nil {
-		return nil, fmt.Errorf("mkdir error, src=%s, dest=%s, %w", src, dest, err)
+		return nil, fmt.Errorf("extractFile: dest open error, src=%s, dest=%s, %w", src, dest, err)
 	}
 	defer func() {
 		err := destFile.Close()
 		if err != nil {
-			log.Fatal(fmt.Errorf("close error, src=%s, dest=%s, %w", src, dest, err))
+			log.Fatal(fmt.Errorf("extractFile: dest close error, src=%s, dest=%s, %w", src, dest, err))
 		}
 	}()
 
 	_, err = io.Copy(destFile, bytes.NewReader(data))
 	if err != nil {
-		return nil, fmt.Errorf("write error, src=%s, dest=%s, %w", src, dest, err)
+		return nil, fmt.Errorf("extractFile: dest write error, src=%s, dest=%s, %w", src, dest, err)
 	}
 
 	return p.output(data, config)

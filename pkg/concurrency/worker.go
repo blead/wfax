@@ -13,7 +13,7 @@ type Item[D any, O any] struct {
 	Err    error
 }
 
-// Execute creates n=`concurrency` workers to process `items` with `f` concurrently and returns the aggregated errors
+// Execute creates n=concurrency workers to process items with f concurrently and returns the aggregated errors
 func Execute[D any, O any](f func(*Item[D, O]) (O, error), items []*Item[D, O], concurrency int) error {
 	ich := make(chan *Item[D, O], len(items))
 	wg := new(sync.WaitGroup)

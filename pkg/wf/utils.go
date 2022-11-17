@@ -55,7 +55,23 @@ func sha1Digest(s string, salt string) (string, error) {
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
-func unzip(src io.ReaderAt, size int64, dest string, modPath func(string) string) error {
+func lszip(src io.ReaderAt, size int64, modPath func(string) string) ([]string, error) {
+	archive, err := zip.NewReader(src, size)
+	if err != nil {
+		return nil, err
+	}
+
+	var paths []string
+	for _, zf := range archive.File {
+		if !zf.FileInfo().IsDir() {
+			path := modPath(filepath.Clean(zf.Name))
+			paths = append(paths, path)
+		}
+	}
+	return paths, nil
+}
+
+func unzip(src io.ReaderAt, size int64, dest string, modPath func(string) string, checkPath func(string) bool) error {
 	archive, err := zip.NewReader(src, size)
 	if err != nil {
 		return err
@@ -73,13 +89,18 @@ func unzip(src io.ReaderAt, size int64, dest string, modPath func(string) string
 		}
 		defer zdata.Close()
 
-		path := filepath.Join(dest, zf.Name)
+		path := modPath(filepath.Clean(zf.Name))
+		if !checkPath(path) {
+			// skip this file
+			return nil
+		}
+
+		path = filepath.Join(dest, path)
 
 		// check for directory traversal (Zip Slip)
-		if !strings.HasPrefix(path, filepath.Clean(dest)+string(os.PathSeparator)) {
-			return fmt.Errorf("illegal file path: %s", path)
+		if !strings.HasPrefix(path, dest+string(os.PathSeparator)) {
+			return fmt.Errorf("unzip: illegal file path: %s", path)
 		}
-		path = modPath(path)
 
 		if zf.FileInfo().IsDir() {
 			return os.MkdirAll(path, 0777)
