@@ -8,7 +8,7 @@ import (
 	amf "github.com/remyoudompheng/goamf"
 )
 
-// Amf3ToJSON converts Adobe AMF3 to JSON
+// Amf3ToJSON converts Adobe AMF3 to JSON.
 func Amf3ToJSON(raw []byte, indent int) ([]byte, error) {
 	data, err := deflate(raw)
 	if err != nil {

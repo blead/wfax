@@ -42,7 +42,6 @@ func DefaultExtractorConfig() *ExtractorConfig {
 // Extractor parses and extracts WF assets.
 type Extractor struct {
 	config  *ExtractorConfig
-	paths   map[string]bool
 	parsers []parser
 }
 
@@ -79,9 +78,14 @@ func NewExtractor(config *ExtractorConfig) (*Extractor, error) {
 
 	return &Extractor{
 		config:  config,
-		paths:   make(map[string]bool),
 		parsers: []parser{&orderedmapParser{}, &actionDSLAMF3Parser{}},
 	}, nil
+}
+
+type extractParams struct {
+	path    string
+	parsers []parser
+	config  *ExtractorConfig
 }
 
 func (extractor *Extractor) extract() error {
@@ -90,19 +94,18 @@ func (extractor *Extractor) extract() error {
 		return err
 	}
 	items := []*concurrency.Item[*extractParams, [][]byte]{{Output: paths}}
+	seenPaths := map[string]bool{}
 
-	for {
-		var newItems []*concurrency.Item[*extractParams, [][]byte]
-		for _, i := range items {
+	return concurrency.Dispatcher(
+		func(i *concurrency.Item[*extractParams, [][]byte]) ([]*concurrency.Item[*extractParams, [][]byte], error) {
+			var output []*concurrency.Item[*extractParams, [][]byte]
 			if i.Output != nil {
-				newPaths := i.Output
-				for _, np := range newPaths {
-					if !extractor.paths[string(np)] {
-						extractor.paths[string(np)] = true
-
-						newItems = append(newItems, &concurrency.Item[*extractParams, [][]byte]{
+				for _, p := range i.Output {
+					if !seenPaths[string(p)] {
+						seenPaths[string(p)] = true
+						output = append(output, &concurrency.Item[*extractParams, [][]byte]{
 							Data: &extractParams{
-								path:    string(np),
+								path:    string(p),
 								parsers: extractor.parsers,
 								config:  extractor.config,
 							},
@@ -112,30 +115,12 @@ func (extractor *Extractor) extract() error {
 					}
 				}
 			}
-		}
-		if len(newItems) == 0 {
-			break
-		}
-
-		items = newItems
-		err = concurrency.Execute(extractPath, items, extractor.config.Concurrency)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// ExtractAssets extracts assets from downloaded files.
-func (extractor *Extractor) ExtractAssets() error {
-	log.Println("[INFO] Extracting assets")
-	return extractor.extract()
-}
-
-type extractParams struct {
-	path    string
-	parsers []parser
-	config  *ExtractorConfig
+			return output, nil
+		},
+		extractPath,
+		items,
+		extractor.config.Concurrency,
+	)
 }
 
 func extractPath(i *concurrency.Item[*extractParams, [][]byte]) ([][]byte, error) {
@@ -200,4 +185,10 @@ func extractFile(path string, p parser, config *ExtractorConfig) ([][]byte, erro
 	}
 
 	return p.output(data, config)
+}
+
+// ExtractAssets extracts assets from downloaded files.
+func (extractor *Extractor) ExtractAssets() error {
+	log.Println("[INFO] Extracting assets")
+	return extractor.extract()
 }

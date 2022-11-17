@@ -97,7 +97,7 @@ func readOrderedMap(raw []byte, flattenCSV bool) (json.Marshaler, error) {
 	return output, nil
 }
 
-// OrderedmapToJSON converts WF orderedmap to JSON
+// OrderedmapToJSON converts WF orderedmap to JSON.
 func OrderedmapToJSON(raw []byte, indent int, flattenCSV bool) ([]byte, error) {
 	om, err := readOrderedMap(raw, flattenCSV)
 	if err != nil {

@@ -6,14 +6,14 @@ import (
 	multierror "github.com/hashicorp/go-multierror"
 )
 
-// Item is a unit of task executed by concurrent workers
+// Item is a unit of task executed by concurrent workers.
 type Item[D any, O any] struct {
 	Data   D
 	Output O
 	Err    error
 }
 
-// Execute creates n=concurrency workers to process items with f concurrently and returns the aggregated errors
+// Execute creates n=concurrency workers to process items with f concurrently and returns the aggregated errors.
 func Execute[D any, O any](f func(*Item[D, O]) (O, error), items []*Item[D, O], concurrency int) error {
 	ich := make(chan *Item[D, O], len(items))
 	wg := new(sync.WaitGroup)
@@ -22,7 +22,6 @@ func Execute[D any, O any](f func(*Item[D, O]) (O, error), items []*Item[D, O], 
 		wg.Add(1)
 		go worker(f, ich, wg)
 	}
-
 	for _, i := range items {
 		ich <- i
 	}
