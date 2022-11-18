@@ -161,15 +161,14 @@ func (client *Client) parseMetadata(json []byte) (string, []*assetMetadata, erro
 				sha256:   child.Path("sha256").Data().(string),
 			})
 		}
-	} else {
-		for _, group := range jsonParsed.Search("data", "diff", "*", "archive").Children() {
-			for _, child := range group.Children() {
-				assets = append(assets, &assetMetadata{
-					location: child.Path("location").Data().(string),
-					size:     int(child.Path("size").Data().(float64)),
-					sha256:   child.Path("sha256").Data().(string),
-				})
-			}
+	}
+	for _, group := range jsonParsed.Search("data", "diff", "*", "archive").Children() {
+		for _, child := range group.Children() {
+			assets = append(assets, &assetMetadata{
+				location: child.Path("location").Data().(string),
+				size:     int(child.Path("size").Data().(float64)),
+				sha256:   child.Path("sha256").Data().(string),
+			})
 		}
 	}
 
