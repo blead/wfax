@@ -13,19 +13,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-
-	"github.com/blead/wfax/assets"
 )
-
-func getInitialFilePaths() ([][]byte, error) {
-	var paths [][]byte
-	pattern := regexp.MustCompile(`"path":"(.*)"`)
-	matches := pattern.FindAllSubmatch(assets.BootFFC6, -1)
-	for _, match := range matches {
-		paths = append(paths, match[1])
-	}
-	return paths, nil
-}
 
 func addExt(p string, ext string) string {
 	return path.Clean(p + ext)

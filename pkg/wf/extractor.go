@@ -1,6 +1,7 @@
 package wf
 
 import (
+	"bufio"
 	"bytes"
 	"errors"
 	"fmt"
@@ -8,7 +9,10 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 
+	"github.com/blead/wfax/assets"
 	"github.com/blead/wfax/pkg/concurrency"
 	"github.com/blead/wfax/pkg/encoding"
 )
@@ -17,12 +21,14 @@ const (
 	digestSalt          = "K6R9T9Hz22OpeIGEWB0ui6c6PYFQnJGy"
 	outputAssetsDir     = "assets"
 	outputOrderedMapDir = "orderedmap"
+	defaultPathList     = ".pathlist"
 )
 
 // ExtractorConfig is the configuration for the extractor.
 type ExtractorConfig struct {
 	SrcPath     string
 	DestPath    string
+	PathList    string
 	Concurrency int
 	Indent      int
 	FlattenCSV  bool
@@ -33,6 +39,7 @@ func DefaultExtractorConfig() *ExtractorConfig {
 	return &ExtractorConfig{
 		SrcPath:     "",
 		DestPath:    "",
+		PathList:    "",
 		Concurrency: 5,
 		Indent:      0,
 		FlattenCSV:  false,
@@ -56,6 +63,7 @@ func NewExtractor(config *ExtractorConfig) (*Extractor, error) {
 	if config == nil {
 		config = def
 	}
+
 	if config.SrcPath == "" || config.SrcPath == "." {
 		wd, err := os.Getwd()
 		if err != nil {
@@ -72,6 +80,11 @@ func NewExtractor(config *ExtractorConfig) (*Extractor, error) {
 		config.DestPath = wd
 	}
 	config.DestPath = filepath.Clean(config.DestPath)
+	if config.PathList == "" || config.PathList == "." {
+		config.PathList = filepath.Join(config.DestPath, defaultPathList)
+	}
+	config.PathList = filepath.Clean(config.PathList)
+
 	if config.Concurrency == 0 {
 		config.Concurrency = 5
 	}
@@ -82,6 +95,77 @@ func NewExtractor(config *ExtractorConfig) (*Extractor, error) {
 	}, nil
 }
 
+func (extractor *Extractor) getInitialPaths() ([][]byte, error) {
+	paths := map[string]struct{}{}
+	for _, p := range strings.Split(assets.PathList, "\n") {
+		paths[p] = struct{}{}
+	}
+	if len(extractor.config.PathList) > 0 {
+		pl, err := extractor.readPathList()
+		if err != nil {
+			return nil, err
+		}
+
+		for _, p := range pl {
+			paths[p] = struct{}{}
+		}
+	}
+
+	var output [][]byte
+	for p := range paths {
+		output = append(output, []byte(p))
+	}
+	return output, nil
+}
+
+func (extractor *Extractor) readPathList() ([]string, error) {
+	f, err := os.Open(extractor.config.PathList)
+	if err != nil {
+		// return nil if pathlist does not exist
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("readPathList: open error, path=%s, %w", extractor.config.PathList, err)
+	}
+	defer f.Close()
+
+	var pl []string
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		pl = append(pl, scanner.Text())
+	}
+	return pl, scanner.Err()
+}
+
+func (extractor *Extractor) writePathList(pl []string) error {
+	sort.Strings(pl)
+
+	f, err := os.OpenFile(extractor.config.PathList, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0666)
+	if err != nil {
+		return fmt.Errorf("writePathList: open error, path=%s, %w", extractor.config.PathList, err)
+	}
+	defer func() {
+		err := f.Close()
+		if err != nil {
+			log.Fatal(fmt.Errorf("writePathList: close error, path=%s, %w", extractor.config.PathList, err))
+		}
+	}()
+
+	writer := bufio.NewWriter(f)
+	for _, p := range pl {
+		_, err = writer.WriteString(p + "\n")
+		if err != nil {
+			return fmt.Errorf("writePathList: write error, path=%s, %w", extractor.config.PathList, err)
+		}
+	}
+	err = writer.Flush()
+	if err != nil {
+		return fmt.Errorf("writePathList: flush error, path=%s, %w", extractor.config.PathList, err)
+	}
+
+	return err
+}
+
 type extractParams struct {
 	path    string
 	parsers []parser
@@ -89,14 +173,14 @@ type extractParams struct {
 }
 
 func (extractor *Extractor) extract() error {
-	paths, err := getInitialFilePaths()
+	paths, err := extractor.getInitialPaths()
 	if err != nil {
 		return err
 	}
 	items := []*concurrency.Item[*extractParams, [][]byte]{{Output: paths}}
 	seenPaths := map[string]bool{}
 
-	return concurrency.Dispatcher(
+	err = concurrency.Dispatcher(
 		func(i *concurrency.Item[*extractParams, [][]byte]) ([]*concurrency.Item[*extractParams, [][]byte], error) {
 			var output []*concurrency.Item[*extractParams, [][]byte]
 			if i.Output != nil {
@@ -121,6 +205,17 @@ func (extractor *Extractor) extract() error {
 		items,
 		extractor.config.Concurrency,
 	)
+	if err != nil {
+		return err
+	}
+
+	var pathList []string
+	for p := range seenPaths {
+		if len(p) > 0 {
+			pathList = append(pathList, p)
+		}
+	}
+	return extractor.writePathList(pathList)
 }
 
 func extractPath(i *concurrency.Item[*extractParams, [][]byte]) ([][]byte, error) {

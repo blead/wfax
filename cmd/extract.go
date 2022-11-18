@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var extractPathList string
 var extractConcurrency int
 var extractIndent int
 var extractFlattenCSV bool
@@ -21,6 +22,7 @@ var extractCmd = &cobra.Command{
 		config := wf.ExtractorConfig{
 			SrcPath:     filepath.Clean(args[0]),
 			DestPath:    filepath.Clean(args[1]),
+			PathList:    filepath.Clean(extractPathList),
 			Concurrency: extractConcurrency,
 			Indent:      extractIndent,
 			FlattenCSV:  extractFlattenCSV,
@@ -40,7 +42,8 @@ var extractCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(extractCmd)
+	extractCmd.Flags().StringVarP(&extractPathList, "path-list", "p", "", "Path to newline delimited file containing possible asset paths (default \"[dest]/.pathlist\")")
 	extractCmd.Flags().IntVarP(&extractConcurrency, "concurrency", "c", 5, "Maximum number of concurrent file extractions")
-	extractCmd.Flags().IntVarP(&extractIndent, "indent", "i", 0, "Number of spaces used as indentation in extracted JSON")
+	extractCmd.Flags().IntVarP(&extractIndent, "indent", "i", 0, "Number of spaces used as indentation in extracted JSON (default 0)")
 	extractCmd.Flags().BoolVarP(&extractFlattenCSV, "flatten-csv", "f", false, "Ignore newlines in multi-line CSVs")
 }
