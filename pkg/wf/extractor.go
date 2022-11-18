@@ -95,29 +95,6 @@ func NewExtractor(config *ExtractorConfig) (*Extractor, error) {
 	}, nil
 }
 
-func (extractor *Extractor) getInitialPaths() ([][]byte, error) {
-	paths := map[string]struct{}{}
-	for _, p := range strings.Split(assets.PathList, "\n") {
-		paths[p] = struct{}{}
-	}
-	if len(extractor.config.PathList) > 0 {
-		pl, err := extractor.readPathList()
-		if err != nil {
-			return nil, err
-		}
-
-		for _, p := range pl {
-			paths[p] = struct{}{}
-		}
-	}
-
-	var output [][]byte
-	for p := range paths {
-		output = append(output, []byte(p))
-	}
-	return output, nil
-}
-
 func (extractor *Extractor) readPathList() ([]string, error) {
 	f, err := os.Open(extractor.config.PathList)
 	if err != nil {
@@ -166,71 +143,27 @@ func (extractor *Extractor) writePathList(pl []string) error {
 	return err
 }
 
-type extractParams struct {
-	path    string
-	parsers []parser
-	config  *ExtractorConfig
-}
-
-func (extractor *Extractor) extract() error {
-	paths, err := extractor.getInitialPaths()
-	if err != nil {
-		return err
+func (extractor *Extractor) getInitialPaths() ([][]byte, error) {
+	paths := map[string]struct{}{}
+	for _, p := range strings.Split(assets.PathList, "\n") {
+		paths[p] = struct{}{}
 	}
-	items := []*concurrency.Item[*extractParams, [][]byte]{{Output: paths}}
-	seenPaths := map[string]bool{}
-
-	err = concurrency.Dispatcher(
-		func(i *concurrency.Item[*extractParams, [][]byte]) ([]*concurrency.Item[*extractParams, [][]byte], error) {
-			var output []*concurrency.Item[*extractParams, [][]byte]
-			if i.Output != nil {
-				for _, p := range i.Output {
-					if !seenPaths[string(p)] {
-						seenPaths[string(p)] = true
-						output = append(output, &concurrency.Item[*extractParams, [][]byte]{
-							Data: &extractParams{
-								path:    string(p),
-								parsers: extractor.parsers,
-								config:  extractor.config,
-							},
-							Output: nil,
-							Err:    nil,
-						})
-					}
-				}
-			}
-			return output, nil
-		},
-		extractPath,
-		items,
-		extractor.config.Concurrency,
-	)
-	if err != nil {
-		return err
-	}
-
-	var pathList []string
-	for p := range seenPaths {
-		if len(p) > 0 {
-			pathList = append(pathList, p)
-		}
-	}
-	return extractor.writePathList(pathList)
-}
-
-func extractPath(i *concurrency.Item[*extractParams, [][]byte]) ([][]byte, error) {
-	var output [][][]byte
-	for _, p := range i.Data.parsers {
-		o, err := extractFile(i.Data.path, p, i.Data.config)
+	if len(extractor.config.PathList) > 0 {
+		pl, err := extractor.readPathList()
 		if err != nil {
 			return nil, err
 		}
-		// o = nil if file does not exist with format p
-		if o != nil {
-			output = append(output, o)
+
+		for _, p := range pl {
+			paths[p] = struct{}{}
 		}
 	}
-	return encoding.Flatten(output), nil
+
+	var output [][]byte
+	for p := range paths {
+		output = append(output, []byte(p))
+	}
+	return output, nil
 }
 
 func extractFile(path string, p parser, config *ExtractorConfig) ([][]byte, error) {
@@ -280,6 +213,73 @@ func extractFile(path string, p parser, config *ExtractorConfig) ([][]byte, erro
 	}
 
 	return p.output(data, config)
+}
+
+type extractParams struct {
+	path    string
+	parsers []parser
+	config  *ExtractorConfig
+}
+
+func extractPath(i *concurrency.Item[*extractParams, [][]byte]) ([][]byte, error) {
+	var output [][][]byte
+	for _, p := range i.Data.parsers {
+		o, err := extractFile(i.Data.path, p, i.Data.config)
+		if err != nil {
+			return nil, err
+		}
+		// o = nil if file does not exist with format p
+		if o != nil {
+			output = append(output, o)
+		}
+	}
+	return encoding.Flatten(output), nil
+}
+
+func (extractor *Extractor) extract() error {
+	paths, err := extractor.getInitialPaths()
+	if err != nil {
+		return err
+	}
+	items := []*concurrency.Item[*extractParams, [][]byte]{{Output: paths}}
+	seenPaths := map[string]bool{}
+
+	err = concurrency.Dispatcher(
+		func(i *concurrency.Item[*extractParams, [][]byte]) ([]*concurrency.Item[*extractParams, [][]byte], error) {
+			var output []*concurrency.Item[*extractParams, [][]byte]
+			if i.Output != nil {
+				for _, p := range i.Output {
+					if !seenPaths[string(p)] {
+						seenPaths[string(p)] = true
+						output = append(output, &concurrency.Item[*extractParams, [][]byte]{
+							Data: &extractParams{
+								path:    string(p),
+								parsers: extractor.parsers,
+								config:  extractor.config,
+							},
+							Output: nil,
+							Err:    nil,
+						})
+					}
+				}
+			}
+			return output, nil
+		},
+		extractPath,
+		items,
+		extractor.config.Concurrency,
+	)
+	if err != nil {
+		return err
+	}
+
+	var pathList []string
+	for p := range seenPaths {
+		if len(p) > 0 {
+			pathList = append(pathList, p)
+		}
+	}
+	return extractor.writePathList(pathList)
 }
 
 // ExtractAssets extracts assets from downloaded files.

@@ -231,6 +231,31 @@ func (client *Client) download(i *concurrency.Item[*assetMetadata, []string]) ([
 	)
 }
 
+type extractMapPair struct {
+	first  map[string]string
+	second map[string]string
+	item   *concurrency.Item[*assetMetadata, []string]
+}
+
+func buildExtractMap(i *concurrency.Item[*extractMapPair, map[string]string]) (map[string]string, error) {
+	m := map[string]string{}
+	paths := i.Data.item.Output
+	for _, p := range paths {
+		m[p] = path.Base(i.Data.item.Data.location)
+	}
+	return m, nil
+}
+
+func mergeExtractMapPair(i *concurrency.Item[*extractMapPair, map[string]string]) (map[string]string, error) {
+	if i.Data.first == nil || i.Data.second == nil {
+		return i.Output, nil
+	}
+	for p := range i.Data.second {
+		i.Data.first[p] = i.Data.second[p]
+	}
+	return i.Data.first, nil
+}
+
 func (client *Client) extract(i *concurrency.Item[*assetMetadata, []string]) ([]string, error) {
 	a := i.Data
 	src := filepath.Join(client.tmpDir, path.Base(a.location))
@@ -297,16 +322,38 @@ func (client *Client) downloadAndExtract(assets []*assetMetadata) error {
 	}
 
 	// build extraction map to avoid overwriting newer files
-	client.extractMap = map[string]string{}
-	for i := len(items) - 1; i >= 0; i-- {
-		loc := path.Base(items[i].Data.location)
-		for _, p := range items[i].Output {
-			if _, ok := client.extractMap[p]; !ok {
-				client.extractMap[p] = loc
+	// convert []path into map[path]location
+	var extMaps []*concurrency.Item[*extractMapPair, map[string]string]
+	for _, i := range items {
+		extMaps = append(extMaps, &concurrency.Item[*extractMapPair, map[string]string]{Data: &extractMapPair{item: i}})
+	}
+	err = concurrency.Execute(buildExtractMap, extMaps, client.config.Concurrency)
+	if err != nil {
+		return err
+	}
+
+	for len(extMaps) > 1 {
+		var newMaps []*concurrency.Item[*extractMapPair, map[string]string]
+
+		// group maps into pairs
+		for i := 0; i < len(extMaps); i += 2 {
+			if i+1 == len(extMaps) {
+				newMaps = append(newMaps, extMaps[i])
+				continue
 			}
+			newMaps = append(newMaps, &concurrency.Item[*extractMapPair, map[string]string]{
+				Data: &extractMapPair{first: extMaps[i].Output, second: extMaps[i+1].Output},
+			})
+		}
+		extMaps = newMaps
+
+		err := concurrency.Execute(mergeExtractMapPair, extMaps, client.config.Concurrency)
+		if err != nil {
+			return err
 		}
 	}
 
+	client.extractMap = extMaps[0].Output
 	return concurrency.Execute(client.extract, items, con)
 }
 

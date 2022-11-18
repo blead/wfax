@@ -11891,7 +11891,6 @@ campaign/start_dash_exchange/start_dash_exchange_campaign_exclude_character
 campaign/start_dash_exchange/start_dash_exchange_campaign_term
 carnival_event/get_party
 carnival_event/index
-character/.
 character/abyss_beast1_dark/pixelart/pixelart
 character/abyss_beast1_fire/pixelart/pixelart
 character/abyss_beast1_light/pixelart/pixelart
@@ -58879,13 +58878,6 @@ multi_special_exchange/exchange_character
 multi_special_exchange/multi_draw_ticket
 multi_special_exchange/single_draw_ticket
 n/g
-n2020/12/31
-n2021/05/31
-n2021/11/27
-n2021/12/31
-n2022/5/31
-n2022/6/30
-nMM/DD
 news/get_info
 news/index
 news/latest_forced
@@ -62585,8 +62577,6 @@ quest/thumbnail/world_tree/battle1_6_3
 quest/thumbnail/world_tree/battle1_7_2
 quest/thumbnail/world_tree/battle1_8_2
 quest/unlock
-questant.jp/q/0GSKA2A8
-questant.jp/q/PRXEBFPA
 r/g
 ranking_event/get_summary
 ranking_event/receive_reward
