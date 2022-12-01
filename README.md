@@ -30,4 +30,4 @@ wfax fetch --diff-only --version 1.600.0 ./dump && wfax extract --indent 2 ./dum
 ## Supported Assets
 The main focus currently is extracting text files so image and audio assets are not supported yet.
 * Ordered Maps
-* Action DSL Files
+* Action/Enemy DSL Files

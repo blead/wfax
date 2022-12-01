@@ -90,8 +90,12 @@ func NewExtractor(config *ExtractorConfig) (*Extractor, error) {
 	}
 
 	return &Extractor{
-		config:  config,
-		parsers: []parser{&orderedmapParser{}, &actionDSLAMF3Parser{}},
+		config: config,
+		parsers: []parser{
+			&orderedmapParser{},
+			&amf3Parser{ext: ".action.dsl"},
+			&amf3Parser{ext: ".esdl"},
+		},
 	}, nil
 }
 

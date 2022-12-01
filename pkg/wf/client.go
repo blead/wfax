@@ -202,7 +202,7 @@ func (client *Client) download(i *concurrency.Item[*assetMetadata, []string]) ([
 	if err != nil {
 		return nil, err
 	}
-	if bytes.Compare(expected, downloaded) != 0 {
+	if !bytes.Equal(expected, downloaded) {
 		return nil, fmt.Errorf("download: sha256 mismatch, expected: %x, downloaded: %x", expected, downloaded)
 	}
 
