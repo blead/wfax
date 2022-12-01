@@ -3,6 +3,7 @@ package wf
 import (
 	"path/filepath"
 
+	"github.com/Jeffail/gabs/v2"
 	"github.com/blead/wfax/pkg/encoding"
 )
 
@@ -57,4 +58,56 @@ func (*amf3Parser) parse(raw []byte, config *ExtractorConfig) ([]byte, error) {
 
 func (*amf3Parser) output(raw []byte, config *ExtractorConfig) ([][]byte, error) {
 	return findAllPaths(raw)
+}
+
+type esdlParser struct {
+	*amf3Parser
+}
+
+func (*esdlParser) searchESDLPaths(jsonParsed *gabs.Container, s []string) []string {
+	var paths []string
+	filePaths, err := jsonParsed.Search(s...).Flatten()
+	if err == nil {
+		for _, fp := range filePaths {
+			path, ok := fp.(string)
+			if ok {
+				paths = append(paths, path)
+			}
+		}
+	}
+
+	return paths
+}
+
+func (parser *esdlParser) output(raw []byte, config *ExtractorConfig) ([][]byte, error) {
+	jsonParsed, err := gabs.ParseJSON(raw)
+	if err != nil {
+		return findAllPaths(raw)
+	}
+
+	// bH = basePath
+	basePath, ok := jsonParsed.Path("bH").Data().(string)
+	if !ok {
+		return findAllPaths(raw)
+	}
+
+	searches := [][]string{
+		// au = forms, g = states, i = actions, b = filePath
+		{"au", "*", "g", "*", "i", "*", "b"},
+		// m = deadActions
+		{"au", "*", "m", "*", "b"},
+		// i = stunActions
+		{"au", "*", "i", "*", "b"},
+		// k = winceActions
+		{"au", "*", "k", "*", "b"},
+	}
+	var paths [][]byte
+
+	for _, s := range searches {
+		for _, path := range parser.searchESDLPaths(jsonParsed, s) {
+			paths = append(paths, []byte(basePath+path))
+		}
+	}
+
+	return paths, nil
 }
