@@ -109,5 +109,28 @@ func (parser *esdlParser) output(raw []byte, config *ExtractorConfig) ([][]byte,
 		}
 	}
 
+	// h = watches, i = content
+	for _, form := range jsonParsed.Search("au", "*", "h", "*", "i").Children() {
+		for _, watch := range form.Children() {
+			// enum index "T4" only
+			index, ok := watch.Search("0").Data().(string)
+			if ok && index == "T4" {
+				for _, path := range parser.searchESDLPaths(watch, []string{"1"}) {
+					paths = append(paths, []byte(basePath+path))
+				}
+			}
+		}
+	}
+
+	// bx = type, enum index "T1" only
+	typeContainer := jsonParsed.Search("bx")
+	index, ok := typeContainer.Search("0").Data().(string)
+	if ok && index == "T1" {
+		// g = pre_action_path
+		for _, path := range parser.searchESDLPaths(typeContainer, []string{"1", "g"}) {
+			paths = append(paths, []byte(basePath+path))
+		}
+	}
+
 	return paths, nil
 }
