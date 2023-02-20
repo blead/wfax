@@ -18,7 +18,6 @@ var extractCmd = &cobra.Command{
 	Short: "Extract files from src into readable format at dest",
 	Args:  cobra.ExactArgs(2),
 	Run: func(cmd *cobra.Command, args []string) {
-
 		config := wf.ExtractorConfig{
 			SrcPath:     filepath.Clean(args[0]),
 			DestPath:    filepath.Clean(args[1]),

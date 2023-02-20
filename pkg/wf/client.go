@@ -12,6 +12,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"strings"
 
 	"github.com/Jeffail/gabs/v2"
 	"github.com/blead/wfax/pkg/concurrency"
@@ -21,9 +22,12 @@ import (
 
 const (
 	defaultVersion = "0.0.0"
-	apiHostJp      = "https://api.worldflipper.jp/latest/api/index.php"
-	apiAssetJp     = "https://api.worldflipper.jp/latest/api/index.php/gacha/exec"
 	dumpAssetDir   = "upload"
+	apiEndpointJP  = "https://api.worldflipper.jp/latest/api/index.php/gacha/exec"
+	apiEndpointGL  = "https://na.wdfp.kakaogames.com/latest/api/index.php/gacha/exec"
+	apiEndpointKR  = "https://kr.wdfp.kakaogames.com/latest/api/index.php/gacha/exec"
+	cdnAddressGL   = "http://patch.wdfp.kakaogames.com/Live/2.0.0"
+	cdnAddressKR   = "http://patch.wdfp.kakaogames.com/Live/2.0.0"
 )
 
 var ErrNoNewAssets = errors.New("no new assets")
@@ -37,12 +41,53 @@ const (
 	DiffAssets
 )
 
+type ServiceRegion int
+
+// Enum values for ServiceRegion.
+const (
+	RegionJP ServiceRegion = iota
+	RegionGL
+	RegionKR
+)
+
+func getAPIEndpoint(region ServiceRegion) string {
+	switch region {
+	case RegionJP:
+		return apiEndpointJP
+	case RegionGL:
+		return apiEndpointGL
+	case RegionKR:
+		return apiEndpointKR
+	}
+	log.Printf("[WARN] getAPIEndpoint: unknown region, using default (JP), region=%v\n", region)
+	return apiEndpointJP
+}
+
+func getCDNAddress(region ServiceRegion) string {
+	switch region {
+	case RegionGL:
+		return cdnAddressGL
+	case RegionKR:
+		return cdnAddressKR
+	default:
+		return ""
+	}
+}
+
+func replaceCDNAddress(location string, region ServiceRegion) string {
+	if region == RegionGL || region == RegionKR {
+		return strings.ReplaceAll(location, "{$cdnAddress}", getCDNAddress(region))
+	}
+	return location
+}
+
 // ClientConfig is the configuration for the client.
 type ClientConfig struct {
 	Version     string
 	Mode        AssetListMode
 	Workdir     string
 	Concurrency int
+	Region      ServiceRegion
 }
 
 // DefaultClientConfig generates a default configuration.
@@ -52,6 +97,7 @@ func DefaultClientConfig() *ClientConfig {
 		Mode:        FullAssets,
 		Workdir:     "",
 		Concurrency: 5,
+		Region:      RegionJP,
 	}
 
 	return config
@@ -98,20 +144,28 @@ func NewClient(config *ClientConfig) (*Client, error) {
 	return &Client{
 		config: config,
 		client: client,
-		header: clientHeader(config.Version),
+		header: clientHeader(config.Version, config.Region),
 	}, nil
 }
 
-func clientHeader(version string) *http.Header {
-	return &http.Header{
+func clientHeader(version string, region ServiceRegion) *http.Header {
+	header := &http.Header{
 		"User-Agent": {"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Safari/537.36"},
 		"Accept":     {"gzip, deflate, br"},
 		"RES_VER":    {version},
 	}
+
+	if region == RegionGL {
+		header.Set("DEVICE_LANG", "en")
+	} else if region == RegionKR {
+		header.Set("DEVICE_LANG", "ko")
+	}
+
+	return header
 }
 
 func (client *Client) fetchMetadata() ([]byte, error) {
-	req, err := retryablehttp.NewRequest("GET", apiAssetJp, nil)
+	req, err := retryablehttp.NewRequest("GET", getAPIEndpoint(client.config.Region), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -156,7 +210,7 @@ func (client *Client) parseMetadata(json []byte) (string, []*assetMetadata, erro
 	if client.config.Mode == FullAssets {
 		for _, child := range jsonParsed.Path("data.full.archive").Children() {
 			assets = append(assets, &assetMetadata{
-				location: child.Path("location").Data().(string),
+				location: replaceCDNAddress(child.Path("location").Data().(string), client.config.Region),
 				size:     int(child.Path("size").Data().(float64)),
 				sha256:   child.Path("sha256").Data().(string),
 			})
@@ -165,7 +219,7 @@ func (client *Client) parseMetadata(json []byte) (string, []*assetMetadata, erro
 	for _, group := range jsonParsed.Search("data", "diff", "*", "archive").Children() {
 		for _, child := range group.Children() {
 			assets = append(assets, &assetMetadata{
-				location: child.Path("location").Data().(string),
+				location: replaceCDNAddress(child.Path("location").Data().(string), client.config.Region),
 				size:     int(child.Path("size").Data().(float64)),
 				sha256:   child.Path("sha256").Data().(string),
 			})
