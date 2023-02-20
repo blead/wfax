@@ -241,6 +241,11 @@ func extractPath(i *concurrency.Item[*extractParams, [][]byte]) ([][]byte, error
 }
 
 func (extractor *Extractor) extract() error {
+	err := os.MkdirAll(extractor.config.DestPath, 0777)
+	if err != nil {
+		return err
+	}
+
 	paths, err := extractor.getInitialPaths()
 	if err != nil {
 		return err
