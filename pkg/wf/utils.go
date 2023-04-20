@@ -24,7 +24,7 @@ func toMasterTablePath(p string) string {
 }
 
 func findAllPaths(b []byte) ([][]byte, error) {
-	pattern := regexp.MustCompile(`[.$a-zA-Z_0-9]+?/[.$a-zA-Z_0-9/]+`)
+	pattern := regexp.MustCompile(`[.$a-zA-Z_0-9-]+?/[.$a-zA-Z_0-9/-]+`)
 	return pattern.FindAll(b, -1), nil
 }
 
