@@ -127,8 +127,6 @@ func NewExtractor(config *ExtractorConfig) (*Extractor, error) {
 				height:       82,
 			},
 		)
-	} else {
-		parsers = append(parsers, &pngParser{})
 	}
 
 	return &Extractor{config: config, parsers: parsers}, nil
