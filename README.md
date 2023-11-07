@@ -27,7 +27,10 @@ Fetch new (`diff-only`) assets for version `1.600.0` into `./dump` directory and
 wfax fetch --diff-only --version 1.600.0 ./dump && wfax extract --indent 2 ./dump ./output
 ```
 
+For more information, use `wfax help`.
+
 ## Supported Assets
-The main focus currently is extracting text files so image and audio assets are not supported yet.
+The main focus currently is extracting text files so other assets are not fully supported.
 * Ordered Maps
-* Action/Enemy DSL Files
+* Action/Enemy DSL files
+* Image assets for EliyaBot (requires a pathlist of internal names)
