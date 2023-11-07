@@ -1,9 +1,10 @@
 module github.com/blead/wfax
 
-go 1.19
+go 1.20
 
 require (
 	github.com/Jeffail/gabs/v2 v2.6.1
+	github.com/disintegration/imaging v1.6.2
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/hashicorp/go-retryablehttp v0.7.1
 	github.com/hashicorp/logutils v1.0.0
@@ -20,4 +21,5 @@ require (
 	github.com/jcoene/gologger v0.0.0-20150511233422-6bdddb86fa18 // indirect
 	github.com/philhofer/fwd v1.1.1 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
+	golang.org/x/image v0.13.0 // indirect
 )

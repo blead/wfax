@@ -26,23 +26,27 @@ const (
 
 // ExtractorConfig is the configuration for the extractor.
 type ExtractorConfig struct {
-	SrcPath     string
-	DestPath    string
-	PathList    string
-	Concurrency int
-	Indent      int
-	FlattenCSV  bool
+	SrcPath        string
+	DestPath       string
+	PathList       string
+	NoDefaultPaths bool
+	Concurrency    int
+	Indent         int
+	FlattenCSV     bool
+	Eliyabot       bool
 }
 
 // DefaultExtractorConfig generates a default configuration.
 func DefaultExtractorConfig() *ExtractorConfig {
 	return &ExtractorConfig{
-		SrcPath:     "",
-		DestPath:    "",
-		PathList:    "",
-		Concurrency: 5,
-		Indent:      0,
-		FlattenCSV:  false,
+		SrcPath:        "",
+		DestPath:       "",
+		PathList:       "",
+		NoDefaultPaths: false,
+		Concurrency:    5,
+		Indent:         0,
+		FlattenCSV:     false,
+		Eliyabot:       false,
 	}
 }
 
@@ -89,14 +93,45 @@ func NewExtractor(config *ExtractorConfig) (*Extractor, error) {
 		config.Concurrency = 5
 	}
 
-	return &Extractor{
-		config: config,
-		parsers: []parser{
-			&orderedmapParser{},
-			&amf3Parser{ext: ".action.dsl"},
-			&esdlParser{&amf3Parser{ext: ".esdl"}},
-		},
-	}, nil
+	parsers := []parser{
+		&orderedmapParser{},
+		&amf3Parser{ext: ".action.dsl"},
+		&esdlParser{&amf3Parser{ext: ".esdl"}},
+	}
+
+	if config.Eliyabot {
+		parsers = append(
+			parsers,
+			&charPngParser{
+				pngParser:    &pngParser{},
+				pathTemplate: "character/%s/ui/full_shot_1440_1920_0",
+				width:        500,
+				height:       500,
+			},
+			&charPngParser{
+				pngParser:    &pngParser{},
+				pathTemplate: "character/%s/ui/full_shot_1440_1920_1",
+				width:        500,
+				height:       500,
+			},
+			&charPngParser{
+				pngParser:    &pngParser{},
+				pathTemplate: "character/%s/ui/square_0",
+				width:        82,
+				height:       82,
+			},
+			&charPngParser{
+				pngParser:    &pngParser{},
+				pathTemplate: "character/%s/ui/square_1",
+				width:        82,
+				height:       82,
+			},
+		)
+	} else {
+		parsers = append(parsers, &pngParser{})
+	}
+
+	return &Extractor{config: config, parsers: parsers}, nil
 }
 
 func (extractor *Extractor) readPathList() ([]string, error) {
@@ -149,8 +184,10 @@ func (extractor *Extractor) writePathList(pl []string) error {
 
 func (extractor *Extractor) getInitialPaths() ([][]byte, error) {
 	paths := map[string]struct{}{}
-	for _, p := range strings.Split(assets.PathList, "\n") {
-		paths[p] = struct{}{}
+	if !extractor.config.NoDefaultPaths {
+		for _, p := range strings.Split(assets.PathList, "\n") {
+			paths[p] = struct{}{}
+		}
 	}
 	if len(extractor.config.PathList) > 0 {
 		pl, err := extractor.readPathList()

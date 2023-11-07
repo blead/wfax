@@ -1,6 +1,8 @@
 package wf
 
 import (
+	"encoding/hex"
+	"fmt"
 	"path/filepath"
 
 	"github.com/Jeffail/gabs/v2"
@@ -133,4 +135,60 @@ func (parser *esdlParser) output(raw []byte, config *ExtractorConfig) ([][]byte,
 	}
 
 	return paths, nil
+}
+
+type pngParser struct {
+}
+
+func (*pngParser) getSrc(path string, config *ExtractorConfig) (string, error) {
+	src, err := sha1Digest(addExt(string(path), ".png"), digestSalt)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(config.SrcPath, dumpAssetDir, src[0:2], src[2:]), nil
+}
+
+func (*pngParser) getDest(path string, config *ExtractorConfig) (string, error) {
+	return addExt(filepath.Join(config.DestPath, outputAssetsDir, filepath.FromSlash(path)), ".png"), nil
+}
+
+func (*pngParser) parse(raw []byte, config *ExtractorConfig) ([]byte, error) {
+	// p n g
+	if raw[1] != 0x70 || raw[2] != 0x6e || raw[3] != 0x67 {
+		return nil, fmt.Errorf("pngParser: png header mismatch, expected: 706e67, found: %x", hex.EncodeToString(raw[1:4]))
+	}
+
+	raw[1] = 0x50
+	raw[2] = 0x4e
+	raw[3] = 0x47
+
+	return raw, nil
+}
+
+func (*pngParser) output(raw []byte, config *ExtractorConfig) ([][]byte, error) {
+	return [][]byte{}, nil
+}
+
+type charPngParser struct {
+	*pngParser
+	pathTemplate string
+	width        int
+	height       int
+}
+
+func (parser *charPngParser) getSrc(path string, config *ExtractorConfig) (string, error) {
+	return parser.pngParser.getSrc(fmt.Sprintf(parser.pathTemplate, path), config)
+}
+
+func (parser *charPngParser) getDest(path string, config *ExtractorConfig) (string, error) {
+	return parser.pngParser.getDest(fmt.Sprintf(parser.pathTemplate, path), config)
+}
+
+func (parser *charPngParser) parse(raw []byte, config *ExtractorConfig) ([]byte, error) {
+	src, err := parser.pngParser.parse(raw, config)
+	if err != nil {
+		return nil, err
+	}
+
+	return encoding.ResizePNG(src, parser.width, parser.height)
 }

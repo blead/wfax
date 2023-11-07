@@ -12,6 +12,8 @@ var extractPathList string
 var extractConcurrency int
 var extractIndent int
 var extractFlattenCSV bool
+var extractNoDefaultPaths bool
+var extractEliyabot bool
 
 var extractCmd = &cobra.Command{
 	Use:   "extract [src] [dest]",
@@ -19,12 +21,14 @@ var extractCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(2),
 	Run: func(cmd *cobra.Command, args []string) {
 		config := wf.ExtractorConfig{
-			SrcPath:     filepath.Clean(args[0]),
-			DestPath:    filepath.Clean(args[1]),
-			PathList:    filepath.Clean(extractPathList),
-			Concurrency: extractConcurrency,
-			Indent:      extractIndent,
-			FlattenCSV:  extractFlattenCSV,
+			SrcPath:        filepath.Clean(args[0]),
+			DestPath:       filepath.Clean(args[1]),
+			PathList:       filepath.Clean(extractPathList),
+			NoDefaultPaths: extractNoDefaultPaths,
+			Concurrency:    extractConcurrency,
+			Indent:         extractIndent,
+			FlattenCSV:     extractFlattenCSV,
+			Eliyabot:       extractEliyabot,
 		}
 
 		extractor, err := wf.NewExtractor(&config)
@@ -45,4 +49,6 @@ func init() {
 	extractCmd.Flags().IntVarP(&extractConcurrency, "concurrency", "c", 5, "Maximum number of concurrent file extractions")
 	extractCmd.Flags().IntVarP(&extractIndent, "indent", "i", 0, "Number of spaces used as indentation in extracted JSON (default 0)")
 	extractCmd.Flags().BoolVarP(&extractFlattenCSV, "flatten-csv", "f", false, "Ignore newlines in multi-line CSVs")
+	extractCmd.Flags().BoolVarP(&extractNoDefaultPaths, "no-default-paths", "n", false, "Ignore default paths and only extract from supplied path list")
+	extractCmd.Flags().BoolVarP(&extractEliyabot, "eliyabot", "e", false, "Resize image assets for eliyabot")
 }
