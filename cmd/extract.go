@@ -50,5 +50,5 @@ func init() {
 	extractCmd.Flags().IntVarP(&extractIndent, "indent", "i", 0, "Number of spaces used as indentation in extracted JSON (default 0)")
 	extractCmd.Flags().BoolVarP(&extractFlattenCSV, "flatten-csv", "f", false, "Ignore newlines in multi-line CSVs")
 	extractCmd.Flags().BoolVarP(&extractNoDefaultPaths, "no-default-paths", "n", false, "Ignore default paths and only extract from supplied path list")
-	extractCmd.Flags().BoolVarP(&extractEliyabot, "eliyabot", "e", false, "Resize image assets for eliyabot")
+	extractCmd.Flags().BoolVarP(&extractEliyabot, "eliyabot", "e", false, "Extract and resize image assets for eliyabot (requires a path list with internal names)")
 }

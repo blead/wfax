@@ -33,4 +33,4 @@ For more information, use `wfax help`.
 The main focus currently is extracting text files so other assets are not fully supported.
 * Ordered Maps
 * Action/Enemy DSL files
-* Image assets for EliyaBot (requires a pathlist of internal names)
+* Image assets for EliyaBot (requires a path list with internal names)

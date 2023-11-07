@@ -171,17 +171,18 @@ func (*pngParser) output(raw []byte, config *ExtractorConfig) ([][]byte, error) 
 
 type charPngParser struct {
 	*pngParser
-	pathTemplate string
+	srcTemplate  string
+	destTemplate string
 	width        int
 	height       int
 }
 
 func (parser *charPngParser) getSrc(path string, config *ExtractorConfig) (string, error) {
-	return parser.pngParser.getSrc(fmt.Sprintf(parser.pathTemplate, path), config)
+	return parser.pngParser.getSrc(fmt.Sprintf(parser.srcTemplate, path), config)
 }
 
 func (parser *charPngParser) getDest(path string, config *ExtractorConfig) (string, error) {
-	return parser.pngParser.getDest(fmt.Sprintf(parser.pathTemplate, path), config)
+	return parser.pngParser.getDest(fmt.Sprintf(parser.destTemplate, path), config)
 }
 
 func (parser *charPngParser) parse(raw []byte, config *ExtractorConfig) ([]byte, error) {
