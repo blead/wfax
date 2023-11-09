@@ -319,29 +319,18 @@ func (spriter *Spriter) processSprite(sheet image.Image, params *spriteParams, r
 		img = imaging.Rotate90(img)
 	}
 
-	var bg image.Image
 	scaledWidth := int(float32(params.width) * spriter.config.Scale)
 	scaledHeight := int(float32(params.height) * spriter.config.Scale)
-
-	if spriter.config.Eliyabot {
-		if abisoul {
-			size := int(24 * spriter.config.Scale)
-			bg = imaging.New(size, size, color.Transparent)
-			if params.width > params.height {
-				scaledWidth = size
-				scaledHeight = 0
-			} else {
-				scaledWidth = 0
-				scaledHeight = size
-			}
-		} else {
-			bg = spriter.backgrounds[rarity]
-		}
-	}
-
 	img = imaging.Resize(img, scaledWidth, scaledHeight, imaging.NearestNeighbor)
 
 	if spriter.config.Eliyabot {
+		var bg image.Image
+		if abisoul {
+			size := int(24 * spriter.config.Scale)
+			bg = imaging.New(size, size, color.Transparent)
+		} else {
+			bg = spriter.backgrounds[rarity]
+		}
 		img = imaging.OverlayCenter(bg, img, 1)
 	}
 
