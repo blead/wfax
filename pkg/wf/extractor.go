@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/Jeffail/gabs/v2"
 	"github.com/blead/wfax/assets"
 	"github.com/blead/wfax/pkg/concurrency"
 	"github.com/blead/wfax/pkg/encoding"
@@ -184,10 +185,59 @@ func (extractor *Extractor) writePathList(pl []string) error {
 	return err
 }
 
+func (extractor *Extractor) extractChars() ([]string, error) {
+	p := orderedmapParser{}
+	src, err := p.getSrc("character/character", extractor.config)
+	if err != nil {
+		return nil, err
+	}
+
+	srcFile, err := os.Open(src)
+	if err != nil {
+		return nil, fmt.Errorf("extractChars: src open error, src=%s, %w", src, err)
+	}
+	defer srcFile.Close()
+
+	data, err := io.ReadAll(srcFile)
+	if err != nil {
+		return nil, fmt.Errorf("extractChars: src read error, src=%s, %w", src, err)
+	}
+	data, err = p.parse(data, extractor.config)
+	if err != nil {
+		return nil, fmt.Errorf("extractChars: src parse error, src=%s, %w", src, err)
+	}
+
+	jsonParsed, err := gabs.ParseJSON(data)
+	if err != nil {
+		return nil, fmt.Errorf("extractChars: json parse error, src=%s, %w", src, err)
+	}
+
+	var output []string
+	for id, char := range jsonParsed.ChildrenMap() {
+		devname, ok := char.Path("0.0").Data().(string)
+		if !ok {
+			return nil, fmt.Errorf("extractChars: unable to parse devname, id=%s", id)
+		}
+		output = append(output, devname)
+	}
+
+	return output, nil
+}
+
 func (extractor *Extractor) getInitialPaths() ([][]byte, error) {
 	paths := map[string]struct{}{}
 	if !extractor.config.NoDefaultPaths {
 		for _, p := range strings.Split(assets.PathList, "\n") {
+			paths[p] = struct{}{}
+		}
+	}
+	if extractor.config.Eliyabot {
+		chars, err := extractor.extractChars()
+		if err != nil {
+			return nil, err
+		}
+
+		for _, p := range chars {
 			paths[p] = struct{}{}
 		}
 	}

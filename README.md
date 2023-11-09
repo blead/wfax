@@ -27,10 +27,20 @@ Fetch new (`diff-only`) assets for version `1.600.0` into `./dump` directory and
 wfax fetch --diff-only --version 1.600.0 ./dump && wfax extract --indent 2 ./dump ./output
 ```
 
-For more information, use `wfax help`.
+Extract character image assets for eliyabot:
+```sh
+wfax extract --eliyabot --no-default-paths ./dump ./output
+```
+
+Extract equipment image assets for eliyabot:
+```sh
+wfax sprite --eliyabot ./dump ./output
+```
+
+For more detailed information, use `wfax help`.
 
 ## Supported Assets
 The main focus currently is extracting text files so other assets are not fully supported.
 * Ordered Maps
 * Action/Enemy DSL files
-* Image assets for EliyaBot (requires a path list with internal names)
+* Image assets for EliyaBot
