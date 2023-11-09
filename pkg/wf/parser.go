@@ -191,5 +191,5 @@ func (parser *charPngParser) parse(raw []byte, config *ExtractorConfig) ([]byte,
 		return nil, err
 	}
 
-	return encoding.ResizePNG(src, parser.width, parser.height)
+	return encoding.FitPNG(src, parser.width, parser.height)
 }

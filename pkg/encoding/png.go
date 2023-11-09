@@ -8,7 +8,7 @@ import (
 	"github.com/disintegration/imaging"
 )
 
-func ResizePNG(src []byte, width int, height int) ([]byte, error) {
+func FitPNG(src []byte, width int, height int) ([]byte, error) {
 	img, err := imaging.Decode(bytes.NewReader(src))
 	if err != nil {
 		return nil, err
