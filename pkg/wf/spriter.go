@@ -292,6 +292,8 @@ func (spriter *Spriter) processSprite(sheet image.Image, params *spriteParams, r
 	if strings.Contains(params.name, "ability_soul") {
 		abisoul = true
 		filename = filename + "_soul"
+	} else if strings.HasSuffix(params.name, "_lv70") {
+		filename = filename + "_enhanced"
 	}
 
 	dest := addExt(filepath.Join(
@@ -353,6 +355,11 @@ func (spriter *Spriter) processAssets(sheet image.Image, atlas []*spriteParams, 
 			return output, nil
 		},
 		func(i *concurrency.Item[*spriteParams, bool]) (bool, error) {
+			if strings.HasSuffix(i.Data.devname, "_lv0") {
+				i.Data.devname = i.Data.devname[:len(i.Data.devname)-4]
+			} else if strings.HasSuffix(i.Data.devname, "_lv70") {
+				i.Data.devname = i.Data.devname[:len(i.Data.devname)-5]
+			}
 			return true, spriter.processSprite(sheet, i.Data, rarity[i.Data.devname])
 		},
 		items,
