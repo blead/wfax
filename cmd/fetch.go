@@ -37,6 +37,8 @@ var fetchCmd = &cobra.Command{
 			config.Region = wf.RegionGL
 		case "kr":
 			config.Region = wf.RegionKR
+		case "cn":
+			config.Region = wf.RegionCN
 		default:
 			log.Printf("[WARN] Unknown service region %s, using default (jp)", fetchRegion)
 			config.Region = wf.RegionJP
@@ -62,5 +64,5 @@ func init() {
 	fetchCmd.Flags().StringVarP(&fetchVersion, "version", "v", "0.0.0", "Game version of existing assets")
 	fetchCmd.Flags().BoolVarP(&fetchDiff, "diff-only", "d", false, "Fetch only new assets (used with --version)")
 	fetchCmd.Flags().IntVarP(&fetchConcurrency, "concurrency", "c", 5, "Maximum number of concurrent asset downloads")
-	fetchCmd.Flags().StringVarP(&fetchRegion, "region", "r", "jp", "Service region: jp, gl, kr")
+	fetchCmd.Flags().StringVarP(&fetchRegion, "region", "r", "jp", "Service region: jp, gl, kr, cn")
 }

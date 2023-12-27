@@ -26,6 +26,7 @@ const (
 	apiEndpointJP  = "https://api.worldflipper.jp/latest/api/index.php/gacha/exec"
 	apiEndpointGL  = "https://na.wdfp.kakaogames.com/latest/api/index.php/gacha/exec"
 	apiEndpointKR  = "https://kr.wdfp.kakaogames.com/latest/api/index.php/gacha/exec"
+	apiEndpointCN  = "https://shijtswygamegf.leiting.com/latest/api/index.php/gacha/exec"
 	cdnAddressGL   = "http://patch.wdfp.kakaogames.com/Live/2.0.0"
 	cdnAddressKR   = "http://patch.wdfp.kakaogames.com/Live/2.0.0"
 )
@@ -48,6 +49,7 @@ const (
 	RegionJP ServiceRegion = iota
 	RegionGL
 	RegionKR
+	RegionCN
 )
 
 func getAPIEndpoint(region ServiceRegion) string {
@@ -58,6 +60,8 @@ func getAPIEndpoint(region ServiceRegion) string {
 		return apiEndpointGL
 	case RegionKR:
 		return apiEndpointKR
+	case RegionCN:
+		return apiEndpointCN
 	}
 	log.Printf("[WARN] getAPIEndpoint: unknown region, using default (JP), region=%v\n", region)
 	return apiEndpointJP
