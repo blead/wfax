@@ -13,6 +13,7 @@ var fetchVersion string
 var fetchDiff bool
 var fetchConcurrency int
 var fetchRegion string
+var fetchComics int
 
 var fetchCmd = &cobra.Command{
 	Use:   "fetch [target dir]",
@@ -39,6 +40,8 @@ var fetchCmd = &cobra.Command{
 			config.Region = wf.RegionKR
 		case "cn":
 			config.Region = wf.RegionCN
+		case "tw":
+			config.Region = wf.RegionTW
 		default:
 			log.Printf("[WARN] Unknown service region %s, using default (jp)", fetchRegion)
 			config.Region = wf.RegionJP
@@ -49,7 +52,7 @@ var fetchCmd = &cobra.Command{
 			log.Fatalln(err)
 		}
 
-		err = client.FetchAssetsFromAPI()
+		err = client.FetchAssetsFromAPI(fetchComics)
 		if err != nil {
 			if err == wf.ErrNoNewAssets {
 				os.Exit(1)
@@ -64,5 +67,6 @@ func init() {
 	fetchCmd.Flags().StringVarP(&fetchVersion, "version", "v", "0.0.0", "Game version of existing assets")
 	fetchCmd.Flags().BoolVarP(&fetchDiff, "diff-only", "d", false, "Fetch only new assets (used with --version)")
 	fetchCmd.Flags().IntVarP(&fetchConcurrency, "concurrency", "c", 5, "Maximum number of concurrent asset downloads")
-	fetchCmd.Flags().StringVarP(&fetchRegion, "region", "r", "jp", "Service region: jp, gl, kr, cn")
+	fetchCmd.Flags().StringVarP(&fetchRegion, "region", "r", "jp", "Service region: jp, gl, kr, cn, tw")
+	fetchCmd.Flags().IntVarP(&fetchComics, "comics", "m", 0, "Fetch comics instead (1: character comics, 2: tutorial comics)")
 }

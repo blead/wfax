@@ -3,15 +3,18 @@ package wf
 import (
 	"bytes"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"net/http"
 	"os"
 	"path"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/Jeffail/gabs/v2"
@@ -21,14 +24,22 @@ import (
 )
 
 const (
-	defaultVersion = "0.0.0"
-	dumpAssetDir   = "upload"
-	apiEndpointJP  = "https://api.worldflipper.jp/latest/api/index.php/gacha/exec"
-	apiEndpointGL  = "https://na.wdfp.kakaogames.com/latest/api/index.php/gacha/exec"
-	apiEndpointKR  = "https://kr.wdfp.kakaogames.com/latest/api/index.php/gacha/exec"
-	apiEndpointCN  = "https://shijtswygamegf.leiting.com/latest/api/index.php/gacha/exec"
-	cdnAddressGL   = "http://patch.wdfp.kakaogames.com/Live/2.0.0"
-	cdnAddressKR   = "http://patch.wdfp.kakaogames.com/Live/2.0.0"
+	defaultVersion   = "0.0.0"
+	dumpAssetDir     = "upload"
+	apiHostJP        = "https://api.worldflipper.jp"
+	apiHostGL        = "https://na.wdfp.kakaogames.com"
+	apiHostKR        = "https://kr.wdfp.kakaogames.com"
+	apiHostCN        = "https://shijtswygamegf.leiting.com"
+	apiHostTW        = "https://wf-game.worldflipper.beanfun.com"
+	apiAssetEndpoint = "/latest/api/index.php/gacha/exec"
+	apiComicEndpoint = "/latest/api/index.php/comic/get_list"
+	cdnAddressGL     = "http://patch.wdfp.kakaogames.com/Live/2.0.0"
+	cdnAddressKR     = "http://patch.wdfp.kakaogames.com/Live/2.0.0"
+	viewerIDJP       = 938889939
+	viewerIDGL       = 752309378
+	viewerIDKR       = 885870369
+	viewerIDCN       = 554279419
+	viewerIDTW       = 714420616
 )
 
 var ErrNoNewAssets = errors.New("no new assets")
@@ -50,21 +61,27 @@ const (
 	RegionGL
 	RegionKR
 	RegionCN
+	RegionTW
 )
 
-func getAPIEndpoint(region ServiceRegion) string {
+func getAPIEndpoint(region ServiceRegion, endpoint string) string {
+	if endpoint == "" {
+		endpoint = apiAssetEndpoint
+	}
 	switch region {
 	case RegionJP:
-		return apiEndpointJP
+		return apiHostJP + endpoint
 	case RegionGL:
-		return apiEndpointGL
+		return apiHostGL + endpoint
 	case RegionKR:
-		return apiEndpointKR
+		return apiHostKR + endpoint
 	case RegionCN:
-		return apiEndpointCN
+		return apiHostCN + endpoint
+	case RegionTW:
+		return apiHostTW + endpoint
 	}
-	log.Printf("[WARN] getAPIEndpoint: unknown region, using default (JP), region=%v\n", region)
-	return apiEndpointJP
+	log.Printf("[WARN] getAPIEndpoint: unknown region, using default (JP), region=%v, endpoint=%v\n", region, endpoint)
+	return apiHostJP + endpoint
 }
 
 func getCDNAddress(region ServiceRegion) string {
@@ -83,6 +100,23 @@ func replaceCDNAddress(location string, region ServiceRegion) string {
 		return strings.ReplaceAll(location, "{$cdnAddress}", getCDNAddress(region))
 	}
 	return location
+}
+
+func getViewerID(region ServiceRegion) int {
+	switch region {
+	case RegionJP:
+		return viewerIDJP
+	case RegionGL:
+		return viewerIDGL
+	case RegionKR:
+		return viewerIDKR
+	case RegionCN:
+		return viewerIDCN
+	case RegionTW:
+		return viewerIDTW
+	}
+	log.Printf("[WARN] getViewerID: unknown region, using default (JP), region=%v\n", region)
+	return viewerIDJP
 }
 
 // ClientConfig is the configuration for the client.
@@ -168,13 +202,7 @@ func clientHeader(version string, region ServiceRegion) *http.Header {
 	return header
 }
 
-func (client *Client) fetchMetadata() ([]byte, error) {
-	req, err := retryablehttp.NewRequest("GET", getAPIEndpoint(client.config.Region), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header = *client.header
+func (client *Client) fetchMsgp(req *retryablehttp.Request) ([]byte, error) {
 	resp, err := client.client.Do(req)
 	if err != nil {
 		return nil, err
@@ -192,11 +220,11 @@ func (client *Client) fetchMetadata() ([]byte, error) {
 
 type assetMetadata struct {
 	location string
-	size     int
+	dest     string
 	sha256   string
 }
 
-func (client *Client) parseMetadata(json []byte) (string, []*assetMetadata, error) {
+func (client *Client) parseMetadata(json []byte, parseAssets bool) (string, []*assetMetadata, error) {
 	jsonParsed, err := gabs.ParseJSON(json)
 	if err != nil {
 		return "", nil, err
@@ -211,22 +239,25 @@ func (client *Client) parseMetadata(json []byte) (string, []*assetMetadata, erro
 	}
 
 	var assets []*assetMetadata
-	if client.config.Mode == FullAssets {
-		for _, child := range jsonParsed.Path("data.full.archive").Children() {
-			assets = append(assets, &assetMetadata{
-				location: replaceCDNAddress(child.Path("location").Data().(string), client.config.Region),
-				size:     int(child.Path("size").Data().(float64)),
-				sha256:   child.Path("sha256").Data().(string),
-			})
+
+	if parseAssets {
+		if client.config.Mode == FullAssets {
+			for _, child := range jsonParsed.Path("data.full.archive").Children() {
+				assets = append(assets, &assetMetadata{
+					location: replaceCDNAddress(child.Path("location").Data().(string), client.config.Region),
+					dest:     client.tmpDir,
+					sha256:   child.Path("sha256").Data().(string),
+				})
+			}
 		}
-	}
-	for _, group := range jsonParsed.Search("data", "diff", "*", "archive").Children() {
-		for _, child := range group.Children() {
-			assets = append(assets, &assetMetadata{
-				location: replaceCDNAddress(child.Path("location").Data().(string), client.config.Region),
-				size:     int(child.Path("size").Data().(float64)),
-				sha256:   child.Path("sha256").Data().(string),
-			})
+		for _, group := range jsonParsed.Search("data", "diff", "*", "archive").Children() {
+			for _, child := range group.Children() {
+				assets = append(assets, &assetMetadata{
+					location: replaceCDNAddress(child.Path("location").Data().(string), client.config.Region),
+					dest:     client.tmpDir,
+					sha256:   child.Path("sha256").Data().(string),
+				})
+			}
 		}
 	}
 
@@ -251,20 +282,28 @@ func (client *Client) download(i *concurrency.Item[*assetMetadata, []string]) ([
 		return nil, err
 	}
 
-	// Compare checksum
-	expected, err := base64.StdEncoding.DecodeString(a.sha256)
-	if err != nil {
-		return nil, err
-	}
-	downloaded, err := sha256Checksum(bytes.NewReader(body))
-	if err != nil {
-		return nil, err
-	}
-	if !bytes.Equal(expected, downloaded) {
-		return nil, fmt.Errorf("download: sha256 mismatch, expected: %x, downloaded: %x", expected, downloaded)
+	if a.sha256 != "" {
+		// Compare checksum
+		expected, err := base64.StdEncoding.DecodeString(a.sha256)
+		if err != nil {
+			return nil, err
+		}
+		downloaded, err := sha256Checksum(bytes.NewReader(body))
+		if err != nil {
+			return nil, err
+		}
+		if !bytes.Equal(expected, downloaded) {
+			return nil, fmt.Errorf("download: sha256 mismatch, expected: %x, downloaded: %x", expected, downloaded)
+		}
 	}
 
-	dest := filepath.Join(client.tmpDir, path.Base(a.location))
+	dest := filepath.Join(a.dest, path.Base(a.location))
+
+	err = os.MkdirAll(filepath.Dir(dest), 0777)
+	if err != nil {
+		return nil, fmt.Errorf("download: dest mkdir error, path=%s, %w", dest, err)
+	}
+
 	destFile, err := os.OpenFile(dest, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0666)
 	if err != nil {
 		return nil, fmt.Errorf("download: open error, path=%s, %w", dest, err)
@@ -281,12 +320,15 @@ func (client *Client) download(i *concurrency.Item[*assetMetadata, []string]) ([
 		return nil, fmt.Errorf("download: write error, path=%s, %w", dest, err)
 	}
 
-	// return list of files
-	return lszip(
-		bytes.NewReader(body),
-		int64(len(body)),
-		modPath,
-	)
+	if a.sha256 != "" {
+		// return list of files
+		return lszip(
+			bytes.NewReader(body),
+			int64(len(body)),
+			modPath,
+		)
+	}
+	return nil, nil
 }
 
 type extractMapPair struct {
@@ -343,7 +385,7 @@ func (client *Client) extract(i *concurrency.Item[*assetMetadata, []string]) ([]
 	return nil, err
 }
 
-func (client *Client) downloadAndExtract(assets []*assetMetadata) error {
+func (client *Client) downloadAssets(assets []*assetMetadata) ([]*concurrency.Item[*assetMetadata, []string], error) {
 	var items []*concurrency.Item[*assetMetadata, []string]
 	for _, a := range assets {
 		items = append(items, &concurrency.Item[*assetMetadata, []string]{
@@ -353,28 +395,21 @@ func (client *Client) downloadAndExtract(assets []*assetMetadata) error {
 		})
 	}
 
-	err := os.MkdirAll(client.config.Workdir, 0777)
-	if err != nil {
-		return err
-	}
-	tmpDir, err := os.MkdirTemp(client.config.Workdir, "fetchtmp")
-	if err != nil {
-		return err
-	}
-	defer func() {
-		err := os.RemoveAll(tmpDir)
-		if err != nil {
-			log.Fatal(fmt.Errorf("downloadAndExtract: remove error, path=%s, %w", tmpDir, err))
-		}
-	}()
-
-	client.tmpDir = tmpDir
 	con := client.config.Concurrency
 	if len(items) < con {
 		con = len(items)
 	}
 
-	err = concurrency.Execute(client.download, items, con)
+	err := concurrency.Execute(client.download, items, con)
+	if err != nil {
+		return nil, err
+	}
+
+	return items, nil
+}
+
+func (client *Client) downloadAndExtract(assets []*assetMetadata) error {
+	items, err := client.downloadAssets(assets)
 	if err != nil {
 		return err
 	}
@@ -412,32 +447,280 @@ func (client *Client) downloadAndExtract(assets []*assetMetadata) error {
 	}
 
 	client.extractMap = extMaps[0].Output
+	con := client.config.Concurrency
+	if len(items) < con {
+		con = len(items)
+	}
+
 	return concurrency.Execute(client.extract, items, con)
 }
 
+//go:generate msgp
+type ComicListRequestBody struct {
+	PageIndex int `msg:"page_index"`
+	Kind      int `msg:"kind"` // 0 = char comics, 1 = guide comics
+	ViewerID  int `msg:"viewer_id"`
+}
+
+func (client *Client) buildComicListRequest(comicListReq *ComicListRequestBody) (*retryablehttp.Request, error) {
+	var body bytes.Buffer
+	encoder := base64.NewEncoder(base64.StdEncoding, &body)
+	err := msgp.Encode(encoder, comicListReq)
+	if err != nil {
+		return nil, err
+	}
+	err = encoder.Close()
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := retryablehttp.NewRequest("POST", getAPIEndpoint(client.config.Region, apiComicEndpoint), &body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header = client.header.Clone()
+	req.Header.Set("APP_VER", "999.999.999")
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("DEVICE", "2")
+	req.Header.Set("GAME-APP-ID", fmt.Sprintf("%d", getViewerID(client.config.Region)))
+	req.Header.Set("Referer", "app:/worldflipper_android_release.swf")
+	req.Header.Set("UDID", "BC51B46F-B7D5-49C3-A651-62D255A49C8471D9")
+	req.Header.Set("x-flash-version", "50,2,2,6")
+
+	param, err := sha1Digest(req.Header.Get("UDID")+req.Header.Get("GAME-APP-ID")+apiComicEndpoint+body.String(), "")
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("PARAM", param)
+
+	return req, nil
+}
+
+type ComicMetadata struct {
+	Episode      int    `json:"episode"`
+	Title        string `json:"title"`
+	CommenceTime string `json:"commenceTime"`
+}
+
+func (client *Client) parseComicList(data []byte) (int, []*assetMetadata, []*ComicMetadata, error) {
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
+	jsonParsed, err := gabs.ParseJSONDecoder(dec)
+	if err != nil || !jsonParsed.ExistsP("data.comic_list") {
+		return 0, nil, nil, err
+	}
+
+	count, err := jsonParsed.Path("data.total_count").Data().(json.Number).Int64()
+	if err != nil {
+		return 0, nil, nil, fmt.Errorf("parseComicList: unable to parse total count, %w", err)
+	}
+
+	var assets []*assetMetadata
+	var comics []*ComicMetadata
+	for _, child := range jsonParsed.Path("data.comic_list").Children() {
+		episode, _ := child.Path("episode").Data().(json.Number).Int64()
+		dest := filepath.Join(client.config.Workdir, fmt.Sprintf("%d", episode))
+		assets = append(assets, &assetMetadata{
+			location: child.Path("media_image.main").Data().(string),
+			dest:     dest,
+			sha256:   "",
+		})
+		assets = append(assets, &assetMetadata{
+			location: child.Path("media_image.thumbnail_s").Data().(string),
+			dest:     dest,
+			sha256:   "",
+		})
+		assets = append(assets, &assetMetadata{
+			location: child.Path("media_image.thumbnail_l").Data().(string),
+			dest:     dest,
+			sha256:   "",
+		})
+		comics = append(comics, &ComicMetadata{
+			Episode:      int(episode),
+			Title:        child.Path("title").Data().(string),
+			CommenceTime: child.Path("commence_time").Data().(string),
+		})
+	}
+
+	return int(count), assets, comics, nil
+}
+
+type comicListOutput struct {
+	assets []*assetMetadata
+	comics []*ComicMetadata
+}
+
+func (client *Client) downloadComicList(i *concurrency.Item[*ComicListRequestBody, *comicListOutput]) (*comicListOutput, error) {
+	comicListReq, err := client.buildComicListRequest(i.Data)
+	if err != nil {
+		return nil, err
+	}
+
+	comicList, err := client.fetchMsgp(comicListReq)
+	if err != nil {
+		return nil, err
+	}
+
+	_, assets, comics, err := client.parseComicList(comicList)
+	if err != nil {
+		return nil, err
+	}
+
+	return &comicListOutput{assets: assets, comics: comics}, nil
+}
+
+func (client *Client) fetchComicsMetadata(kind int, version string) ([]*assetMetadata, error) {
+	client.header.Set("RES_VER", version)
+
+	comicListReq, err := client.buildComicListRequest(&ComicListRequestBody{
+		ViewerID:  getViewerID(client.config.Region),
+		Kind:      kind,
+		PageIndex: 0,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	comicList, err := client.fetchMsgp(comicListReq)
+	if err != nil {
+		return nil, err
+	}
+
+	count, assets, comics, err := client.parseComicList(comicList)
+	if err != nil {
+		return nil, err
+	}
+
+	var items []*concurrency.Item[*ComicListRequestBody, *comicListOutput]
+	pages := int(math.Ceil(float64(count) / float64(len(comics))))
+	for i := 1; i <= pages; i++ {
+		items = append(items, &concurrency.Item[*ComicListRequestBody, *comicListOutput]{
+			Data: &ComicListRequestBody{
+				ViewerID:  getViewerID(client.config.Region),
+				Kind:      kind,
+				PageIndex: i,
+			},
+			Output: nil,
+			Err:    nil,
+		})
+	}
+
+	con := client.config.Concurrency
+	if len(items) < con {
+		con = len(items)
+	}
+
+	err = concurrency.Execute(client.downloadComicList, items, con)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, i := range items {
+		if i.Output != nil {
+			if i.Output.comics != nil {
+				comics = append(comics, i.Output.comics...)
+			}
+			if i.Output.assets != nil {
+				assets = append(assets, i.Output.assets...)
+			}
+		}
+	}
+	sort.Slice(comics, func(i, j int) bool {
+		return comics[i].Episode < comics[j].Episode
+	})
+
+	f, err := os.OpenFile(filepath.Join(client.config.Workdir, "metadata.json"), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0666)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		err := f.Close()
+		if err != nil {
+			log.Fatalln(err)
+		}
+	}()
+
+	enc := json.NewEncoder(f)
+	enc.SetEscapeHTML(false)
+	err = enc.Encode(comics)
+	if err != nil {
+		return nil, err
+	}
+
+	return assets, nil
+}
+
 // FetchAssetsFromAPI fetches metadata from API then download and extract the assets archives.
-func (client *Client) FetchAssetsFromAPI() error {
+func (client *Client) FetchAssetsFromAPI(fetchComics int) error {
+	if fetchComics < 0 || fetchComics > 2 {
+		log.Println("[WARN] Invalid comics id supplied, fetching character comics (1) instead")
+		fetchComics = 1
+	}
+	if client.config.Region == RegionCN {
+		log.Println("[WARN] CN region is untested due to region block")
+	}
+
 	log.Println("[INFO] Fetching asset metadata, clientVersion=" + client.config.Version)
-	metadata, err := client.fetchMetadata()
+	metadataReq, err := retryablehttp.NewRequest("GET", getAPIEndpoint(client.config.Region, apiAssetEndpoint), nil)
 	if err != nil {
 		return err
 	}
 
-	latestVersion, assets, err := client.parseMetadata(metadata)
-	if err != nil {
-		return err
-	}
-	if len(assets) == 0 {
-		log.Println("[INFO] No new assets")
-		return ErrNoNewAssets
-	}
-
-	log.Printf("[INFO] Fetching assets, clientVersion=%s, latestVersion=%s\n", client.config.Version, latestVersion)
-	err = client.downloadAndExtract(assets)
+	metadataReq.Header = *client.header
+	metadata, err := client.fetchMsgp(metadataReq)
 	if err != nil {
 		return err
 	}
 
-	fmt.Println(latestVersion)
-	return nil
+	err = os.MkdirAll(client.config.Workdir, 0777)
+	if err != nil {
+		return err
+	}
+
+	if fetchComics != 1 && fetchComics != 2 {
+		tmpDir, err := os.MkdirTemp(client.config.Workdir, "fetchtmp")
+		if err != nil {
+			return err
+		}
+		defer func() {
+			err := os.RemoveAll(tmpDir)
+			if err != nil {
+				log.Fatal(fmt.Errorf("FetchAssetsFromAPI: remove error, path=%s, %w", tmpDir, err))
+			}
+		}()
+
+		client.tmpDir = tmpDir
+	}
+
+	latestVersion, assets, err := client.parseMetadata(metadata, fetchComics != 1 && fetchComics != 2)
+	if err != nil {
+		return err
+	}
+
+	if fetchComics != 1 && fetchComics != 2 {
+		if len(assets) == 0 {
+			log.Println("[INFO] No new assets")
+			return ErrNoNewAssets
+		}
+
+		log.Printf("[INFO] Fetching assets, clientVersion=%s, latestVersion=%s\n", client.config.Version, latestVersion)
+		err = client.downloadAndExtract(assets)
+		if err != nil {
+			return err
+		}
+
+		fmt.Println(latestVersion)
+		return nil
+	}
+
+	log.Printf("[INFO] Fetching comics list, type=%d, latestVersion=%s\n", fetchComics, latestVersion)
+	assets, err = client.fetchComicsMetadata(fetchComics-1, latestVersion)
+	if err != nil {
+		return err
+	}
+
+	log.Printf("[INFO] Downloading comics, fileCount=%d\n", len(assets))
+	_, err = client.downloadAssets(assets)
+	return err
 }
