@@ -62,6 +62,7 @@ const (
 	RegionKR
 	RegionCN
 	RegionTW
+	RegionTH
 )
 
 func getAPIEndpoint(region ServiceRegion, endpoint string) string {
@@ -71,7 +72,7 @@ func getAPIEndpoint(region ServiceRegion, endpoint string) string {
 	switch region {
 	case RegionJP:
 		return apiHostJP + endpoint
-	case RegionGL:
+	case RegionGL, RegionTH:
 		return apiHostGL + endpoint
 	case RegionKR:
 		return apiHostKR + endpoint
@@ -86,7 +87,7 @@ func getAPIEndpoint(region ServiceRegion, endpoint string) string {
 
 func getCDNAddress(region ServiceRegion) string {
 	switch region {
-	case RegionGL:
+	case RegionGL, RegionTH:
 		return cdnAddressGL
 	case RegionKR:
 		return cdnAddressKR
@@ -96,7 +97,7 @@ func getCDNAddress(region ServiceRegion) string {
 }
 
 func replaceCDNAddress(location string, region ServiceRegion) string {
-	if region == RegionGL || region == RegionKR {
+	if region == RegionGL || region == RegionTH || region == RegionKR {
 		return strings.ReplaceAll(location, "{$cdnAddress}", getCDNAddress(region))
 	}
 	return location
@@ -106,7 +107,7 @@ func getViewerID(region ServiceRegion) int {
 	switch region {
 	case RegionJP:
 		return viewerIDJP
-	case RegionGL:
+	case RegionGL, RegionTH:
 		return viewerIDGL
 	case RegionKR:
 		return viewerIDKR
@@ -195,6 +196,8 @@ func clientHeader(version string, region ServiceRegion) *http.Header {
 
 	if region == RegionGL {
 		header.Set("DEVICE_LANG", "en")
+	} else if region == RegionTH {
+		header.Set("DEVICE_LANG", "th")
 	} else if region == RegionKR {
 		header.Set("DEVICE_LANG", "ko")
 	}

@@ -36,6 +36,8 @@ var fetchCmd = &cobra.Command{
 			config.Region = wf.RegionJP
 		case "gl":
 			config.Region = wf.RegionGL
+		case "th":
+			config.Region = wf.RegionTH
 		case "kr":
 			config.Region = wf.RegionKR
 		case "cn":
@@ -67,6 +69,6 @@ func init() {
 	fetchCmd.Flags().StringVarP(&fetchVersion, "version", "v", "0.0.0", "Game version of existing assets")
 	fetchCmd.Flags().BoolVarP(&fetchDiff, "diff-only", "d", false, "Fetch only new assets (used with --version)")
 	fetchCmd.Flags().IntVarP(&fetchConcurrency, "concurrency", "c", 5, "Maximum number of concurrent asset downloads")
-	fetchCmd.Flags().StringVarP(&fetchRegion, "region", "r", "jp", "Service region: jp, gl, kr, cn, tw")
+	fetchCmd.Flags().StringVarP(&fetchRegion, "region", "r", "jp", "Service region/language: jp, gl, th, kr, cn, tw")
 	fetchCmd.Flags().IntVarP(&fetchComics, "comics", "m", 0, "Fetch comics instead (1: character comics, 2: tutorial comics)")
 }
