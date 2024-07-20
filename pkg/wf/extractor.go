@@ -361,7 +361,6 @@ func extractPath(i *concurrency.Item[*extractParams, [][]byte]) ([][]byte, error
 
 		o, err := extractFile(i.Data.path, p, i.Data.config)
 		if err != nil {
-			log.Printf("error when extracting file path: %s \n error: %e", i.Data.path, err)
 			return nil, err
 		}
 		// o = nil if file does not exist with format p
@@ -373,15 +372,10 @@ func extractPath(i *concurrency.Item[*extractParams, [][]byte]) ([][]byte, error
 }
 
 func packPath(i *concurrency.Item[*extractParams, [][]byte]) ([][]byte, error) {
-	//log.Printf("[INFO] Attempting to pack: %s", i.Data.path)
 	var output [][][]byte
 	for _, p := range i.Data.parsers {
 		err := packFile(i.Data.path, p, i.Data.config)
 		if err != nil {
-			// if strings.HasPrefix(i.Data.path, "/character/") {
-
-			// 	log.Printf("Error when repacking path (%s): %e", i.Data.path, err)
-			// }
 			return nil, err
 		}
 	}
