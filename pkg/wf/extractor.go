@@ -308,6 +308,47 @@ func extractFile(path string, p parser, config *ExtractorConfig) ([][]byte, erro
 	return p.output(data, config)
 }
 
+func packFile(path string, p parser, config *ExtractorConfig) error {
+	src, err := p.getDest(path, config)
+	if err != nil {
+		return err
+	}
+	dest, err := p.getSrc(path, config)
+	if err != nil {
+		return err
+	}
+
+	srcFile, err := os.Open(src)
+	if err != nil {
+		return fmt.Errorf("packFile: src open error, src=%s, dest=%s, %w", src, dest, err)
+	}
+	defer srcFile.Close()
+
+	data, err := io.ReadAll(srcFile)
+	if err != nil {
+		return fmt.Errorf("packFile: src read error, src=%s, dest=%s, %w", src, dest, err)
+	}
+
+	data, err = p.unparse(data, config)
+	if err != nil {
+		return fmt.Errorf("packFile: src unparse error, src=%s, dest=%s, %w", src, dest, err)
+	}
+
+	os.MkdirAll(filepath.Dir(dest), 0777)
+	destFile, err := os.OpenFile(dest, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0666)
+	if err != nil {
+		return fmt.Errorf("packFile: dest open error, src=%s, dest=%s, %w", src, dest, err)
+	}
+	defer destFile.Close()
+
+	_, err = io.Copy(destFile, bytes.NewReader(data))
+	if err != nil {
+		return fmt.Errorf("packFile: dest write error, src=%s, dest=%s, %w", src, dest, err)
+	}
+
+	return nil
+}
+
 type extractParams struct {
 	path    string
 	parsers []parser
@@ -317,6 +358,7 @@ type extractParams struct {
 func extractPath(i *concurrency.Item[*extractParams, [][]byte]) ([][]byte, error) {
 	var output [][][]byte
 	for _, p := range i.Data.parsers {
+
 		o, err := extractFile(i.Data.path, p, i.Data.config)
 		if err != nil {
 			return nil, err
@@ -324,6 +366,17 @@ func extractPath(i *concurrency.Item[*extractParams, [][]byte]) ([][]byte, error
 		// o = nil if file does not exist with format p
 		if o != nil {
 			output = append(output, o)
+		}
+	}
+	return encoding.Flatten(output), nil
+}
+
+func packPath(i *concurrency.Item[*extractParams, [][]byte]) ([][]byte, error) {
+	var output [][][]byte
+	for _, p := range i.Data.parsers {
+		err := packFile(i.Data.path, p, i.Data.config)
+		if err != nil {
+			return nil, err
 		}
 	}
 	return encoding.Flatten(output), nil
@@ -380,8 +433,64 @@ func (extractor *Extractor) extract() error {
 	return extractor.writePathList(pathList)
 }
 
+func (extractor *Extractor) pack() error {
+	err := os.MkdirAll(extractor.config.DestPath, 0777)
+	if err != nil {
+		return err
+	}
+
+	paths, err := extractor.getInitialPaths()
+	if err != nil {
+		return err
+	}
+	items := []*concurrency.Item[*extractParams, [][]byte]{{Output: paths}}
+	seenPaths := map[string]bool{}
+
+	err = concurrency.Dispatcher(
+		func(i *concurrency.Item[*extractParams, [][]byte]) ([]*concurrency.Item[*extractParams, [][]byte], error) {
+			var output []*concurrency.Item[*extractParams, [][]byte]
+			if i.Output != nil {
+				for _, p := range i.Output {
+					if !seenPaths[string(p)] {
+						seenPaths[string(p)] = true
+						output = append(output, &concurrency.Item[*extractParams, [][]byte]{
+							Data: &extractParams{
+								path:    string(p),
+								parsers: extractor.parsers,
+								config:  extractor.config,
+							},
+							Output: nil,
+							Err:    nil,
+						})
+					}
+				}
+			}
+			return output, nil
+		},
+		packPath,
+		items,
+		extractor.config.Concurrency,
+	)
+	if err != nil {
+		return err
+	}
+
+	var pathList []string
+	for p := range seenPaths {
+		if len(p) > 0 {
+			pathList = append(pathList, p)
+		}
+	}
+	return extractor.writePathList(pathList)
+}
+
 // ExtractAssets extracts assets from downloaded files.
 func (extractor *Extractor) ExtractAssets() error {
 	log.Println("[INFO] Extracting assets")
 	return extractor.extract()
+}
+
+func (packer *Extractor) PackAssets() error {
+	log.Println("[INFO] Packing assets")
+	return packer.pack()
 }

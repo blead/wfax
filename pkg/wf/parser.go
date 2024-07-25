@@ -13,6 +13,7 @@ type parser interface {
 	getSrc(string, *ExtractorConfig) (string, error)
 	getDest(string, *ExtractorConfig) (string, error)
 	parse([]byte, *ExtractorConfig) ([]byte, error)
+	unparse([]byte, *ExtractorConfig) ([]byte, error)
 	output([]byte, *ExtractorConfig) ([][]byte, error)
 }
 
@@ -32,6 +33,10 @@ func (*orderedmapParser) getDest(path string, config *ExtractorConfig) (string, 
 
 func (*orderedmapParser) parse(raw []byte, config *ExtractorConfig) ([]byte, error) {
 	return encoding.OrderedmapToJSON(raw, config.Indent, config.FlattenCSV)
+}
+
+func (*orderedmapParser) unparse(raw []byte, config *ExtractorConfig) ([]byte, error) {
+	return encoding.JSONToOrderedmap(raw)
 }
 
 func (*orderedmapParser) output(raw []byte, config *ExtractorConfig) ([][]byte, error) {
@@ -56,6 +61,10 @@ func (parser *amf3Parser) getDest(path string, config *ExtractorConfig) (string,
 
 func (*amf3Parser) parse(raw []byte, config *ExtractorConfig) ([]byte, error) {
 	return encoding.Amf3ToJSON(raw, config.Indent)
+}
+
+func (*amf3Parser) unparse(raw []byte, config *ExtractorConfig) ([]byte, error) {
+	return nil, fmt.Errorf("unparse amf3Parser: not implemented")
 }
 
 func (*amf3Parser) output(raw []byte, config *ExtractorConfig) ([][]byte, error) {
@@ -165,6 +174,10 @@ func (*pngParser) parse(raw []byte, config *ExtractorConfig) ([]byte, error) {
 	return raw, nil
 }
 
+func (*pngParser) unparse(raw []byte, config *ExtractorConfig) ([]byte, error) {
+	return nil, fmt.Errorf("unparse pngParser: not implemented")
+}
+
 func (*pngParser) output(raw []byte, config *ExtractorConfig) ([][]byte, error) {
 	return [][]byte{}, nil
 }
@@ -192,4 +205,8 @@ func (parser *charPngParser) parse(raw []byte, config *ExtractorConfig) ([]byte,
 	}
 
 	return encoding.FitPNG(src, parser.width, parser.height)
+}
+
+func (*charPngParser) unparse(raw []byte, config *ExtractorConfig) ([]byte, error) {
+	return nil, fmt.Errorf("unparse charPngParser: not implemented")
 }

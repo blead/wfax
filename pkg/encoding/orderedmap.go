@@ -2,9 +2,12 @@ package encoding
 
 import (
 	"bytes"
+	"compress/zlib"
 	"encoding/binary"
 	"encoding/csv"
 	"encoding/json"
+	"fmt"
+	"sort"
 	"strings"
 
 	omap "github.com/iancoleman/orderedmap"
@@ -95,6 +98,120 @@ func readOrderedMap(raw []byte, flattenCSV bool) (json.Marshaler, error) {
 	}
 
 	return output, nil
+}
+
+func convertToOrderedmap(data interface{}) ([]byte, error) {
+	switch v := data.(type) {
+	case map[string]interface{}:
+		return convertMapToOrderedmap(v)
+	case []interface{}:
+		return convertSliceToCSV(v)
+	default:
+		return nil, fmt.Errorf("unsupported type: %T", v)
+	}
+}
+
+func convertMapToOrderedmap(m map[string]interface{}) ([]byte, error) {
+	var keys []string
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	var keySection, valueSection []byte
+	var offsets []orderedMapOffset
+	currentKeyOffset := int32(0)
+	currentValueOffset := int32(0)
+
+	for _, k := range keys {
+		v := m[k]
+		keyBytes := []byte(k)
+		valueBytes, err := convertToOrderedmap(v)
+		if err != nil {
+			return nil, err
+		}
+
+		keySection = append(keySection, keyBytes...)
+		valueSection = append(valueSection, valueBytes...)
+
+		offsets = append(offsets, orderedMapOffset{
+			KeyEndOffset:   currentKeyOffset + int32(len(keyBytes)),
+			ValueEndOffset: currentValueOffset + int32(len(valueBytes)),
+		})
+
+		currentKeyOffset += int32(len(keyBytes))
+		currentValueOffset += int32(len(valueBytes))
+	}
+
+	headerBuf := new(bytes.Buffer)
+	binary.Write(headerBuf, binary.LittleEndian, int32(len(offsets)))
+	for _, offset := range offsets {
+		binary.Write(headerBuf, binary.LittleEndian, offset.KeyEndOffset)
+		binary.Write(headerBuf, binary.LittleEndian, offset.ValueEndOffset)
+	}
+	headerBuf.Write(keySection)
+
+	compressedHeader := compressZlib(headerBuf.Bytes())
+	headerSize := int32(len(compressedHeader))
+
+	result := new(bytes.Buffer)
+	binary.Write(result, binary.LittleEndian, headerSize)
+	result.Write(compressedHeader)
+	result.Write(valueSection)
+
+	return result.Bytes(), nil
+}
+
+func convertSliceToCSV(slice []interface{}) ([]byte, error) {
+	var buf bytes.Buffer
+	for _, v := range slice {
+		switch val := v.(type) {
+		case []interface{}:
+			for i, item := range val {
+				if i > 0 {
+					buf.WriteByte(',')
+				}
+				writeCSVValue(&buf, item)
+			}
+		default:
+			writeCSVValue(&buf, val)
+		}
+		buf.WriteByte('\n')
+	}
+
+	return compressZlib(buf.Bytes()), nil
+}
+
+func writeCSVValue(buf *bytes.Buffer, value interface{}) {
+	switch v := value.(type) {
+	case string:
+		// escape double quotes and wrap the value in quotes
+		escaped := strings.Replace(v, `"`, `""`, -1)
+		fmt.Fprintf(buf, `"%s"`, escaped)
+	case nil:
+		// write an empty string for null values
+		buf.WriteString(`""`)
+	default:
+		fmt.Fprintf(buf, "%v", v)
+	}
+}
+
+func compressZlib(data []byte) []byte {
+	var buf bytes.Buffer
+	w := zlib.NewWriter(&buf)
+	w.Write(data)
+	w.Close()
+	return buf.Bytes()
+}
+
+func JSONToOrderedmap(jsonData []byte) ([]byte, error) {
+	var data interface{}
+	err := json.Unmarshal(jsonData, &data)
+	if err != nil {
+		return nil, err
+	}
+
+	return convertToOrderedmap(data)
 }
 
 // OrderedmapToJSON converts WF orderedmap to JSON.
