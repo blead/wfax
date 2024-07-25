@@ -34,6 +34,7 @@ func Dispatcher[D any, O any](dispatch func(*Item[D, O]) ([]*Item[D, O], error),
 		}
 		pending += len(out)
 		for _, o := range out {
+			items = append(items, o)
 			dch <- o
 		}
 	}

@@ -27,7 +27,7 @@ Fetch new (`diff-only`) assets for version `1.600.0` into `./dump` directory and
 wfax fetch --diff-only --version 1.600.0 ./dump && wfax extract --indent 2 ./dump ./output
 ```
 
-Fetch character comics (`--comics 1`) with `10` maximum concurrent requests into `./comics` directory.
+Fetch character comics (`--comics 1`) with `10` maximum concurrent requests into `./comics` directory:
 ```sh
 wfax fetch --comics 1 --concurrency 10 ./comics
 ```
@@ -40,6 +40,11 @@ wfax extract --eliyabot --no-default-paths ./dump ./output
 Extract equipment image assets for eliyabot:
 ```sh
 wfax sprite --eliyabot ./dump ./output
+```
+
+Pack extracted files in `./output` back into assets in `./dump`:
+```sh
+wfax pack ./output ./dump
 ```
 
 For more detailed information, use `wfax help`.
