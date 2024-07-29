@@ -8,7 +8,7 @@ import multierror "github.com/hashicorp/go-multierror"
 // and waits for processed items from workers via input channel to continue the process.
 //
 // Each worker reads from dispatch channel, calls work on received items, and sends them back to the dispatcher.
-// Dispatcher terminates when input channel is completely drained no new items are generated from dispatch.
+// Dispatcher terminates when input channel is completely drained and no new items are generated from dispatch.
 func Dispatcher[D any, O any](dispatch func(*Item[D, O]) ([]*Item[D, O], error), work func(*Item[D, O]) (O, error), items []*Item[D, O], concurrency int) error {
 	ich := make(chan *Item[D, O])
 	dch := make(chan *Item[D, O])
@@ -40,14 +40,14 @@ func Dispatcher[D any, O any](dispatch func(*Item[D, O]) ([]*Item[D, O], error),
 	close(ich)
 	close(dch)
 
-	var errs error
+	var errs *multierror.Error
 	for _, i := range items {
 		if i.Err != nil {
 			errs = multierror.Append(errs, i.Err)
 		}
 	}
 
-	return errs
+	return errs.ErrorOrNil()
 }
 
 func dispatchWorker[D any, O any](f func(*Item[D, O]) (O, error), dch chan *Item[D, O], ich chan *Item[D, O]) {
