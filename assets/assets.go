@@ -19,3 +19,6 @@ var ItemGold []byte
 
 //go:embed item_rainbow.png
 var ItemRainbow []byte
+
+//go:embed item_rainbow_enhanced.png
+var ItemRainbowEnhanced []byte

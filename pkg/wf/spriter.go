@@ -113,6 +113,10 @@ func NewSpriter(config *SpriterConfig) (*Spriter, error) {
 		if err != nil {
 			return nil, err
 		}
+		backgrounds[6], err = imaging.Decode(bytes.NewReader(assets.ItemRainbowEnhanced))
+		if err != nil {
+			return nil, err
+		}
 		for i, img := range backgrounds {
 			size := int(24 * config.Scale)
 			backgrounds[i] = imaging.Resize(img, size, size, imaging.NearestNeighbor)
@@ -293,7 +297,13 @@ func (spriter *Spriter) processSprite(sheet image.Image, params *spriteParams, r
 		abisoul = true
 		filename = filename + "_soul"
 	} else if strings.HasSuffix(params.name, "_lv70") {
-		filename = filename + "_enhanced"
+		if rarity == 6 {
+			filename = filename + "_enhanced99"
+		} else {
+			filename = filename + "_enhanced"
+			// process another file with purple border background
+			spriter.processSprite(sheet, params, 6)
+		}
 	}
 
 	dest := addExt(filepath.Join(
