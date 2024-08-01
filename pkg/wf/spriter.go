@@ -199,12 +199,12 @@ func parseAtlas(atlas []byte) ([]*spriteParams, error) {
 	return output, nil
 }
 
-func parseEquipmentMaps(equipmentsJSON []byte, equipmentEnhancementAbilitiesJSON []byte) (rarityMap map[string]int, enhanced99Map map[string]bool, err error) {
+func parseEquipmentMaps(equipmentsJSON []byte, equipmentEnhancementsJSON []byte) (rarityMap map[string]int, enhanced99Map map[string]bool, err error) {
 	equipmentsParsed, err := gabs.ParseJSON(equipmentsJSON)
 	if err != nil {
 		return nil, nil, err
 	}
-	equipmentEnhancementAbilitiesParsed, err := gabs.ParseJSON(equipmentEnhancementAbilitiesJSON)
+	equipmentEnhancementsParsed, err := gabs.ParseJSON(equipmentEnhancementsJSON)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -226,7 +226,7 @@ func parseEquipmentMaps(equipmentsJSON []byte, equipmentEnhancementAbilitiesJSON
 		}
 		rarityMap[devname] = int(rarity)
 
-		if equipmentEnhancementAbilitiesParsed.Exists(id) {
+		if equipmentEnhancementsParsed.Exists(id) {
 			enhanced99Map[devname] = true
 		}
 	}
@@ -234,7 +234,7 @@ func parseEquipmentMaps(equipmentsJSON []byte, equipmentEnhancementAbilitiesJSON
 	return rarityMap, enhanced99Map, nil
 }
 
-func (spriter *Spriter) extractAssets() (spriteSheet []byte, spriteAtlas []byte, equipments []byte, equipmentEnhancementAbilities []byte, err error) {
+func (spriter *Spriter) extractAssets() (spriteSheet []byte, spriteAtlas []byte, equipments []byte, equipmentEnhancements []byte, err error) {
 
 	targets := []*concurrency.Item[*extractParams, []byte]{
 		{Data: &extractParams{path: spriter.config.SpritePath, parsers: []parser{&pngParser{}}}},
@@ -248,7 +248,7 @@ func (spriter *Spriter) extractAssets() (spriteSheet []byte, spriteAtlas []byte,
 				Data: &extractParams{path: "item/equipment", parsers: []parser{&orderedmapParser{}}},
 			},
 			&concurrency.Item[*extractParams, []byte]{
-				Data: &extractParams{path: "equipment_enhancement/equipment_enhancement_ability", parsers: []parser{&orderedmapParser{}}},
+				Data: &extractParams{path: "equipment_enhancement/equipment_enhancement", parsers: []parser{&orderedmapParser{}}},
 			},
 		)
 	}
@@ -402,7 +402,7 @@ func (spriter *Spriter) processAssets(sheet image.Image, atlas []*spriteParams, 
 func (spriter *Spriter) ExtractSprite() error {
 	log.Println("[INFO] Extracting sprites")
 
-	sheet, atlasJSON, equipmentsJSON, equipmentEnhancementAbilitiesJSON, err := spriter.extractAssets()
+	sheet, atlasJSON, equipmentsJSON, equipmentEnhancementsJSON, err := spriter.extractAssets()
 	if err != nil {
 		return err
 	}
@@ -420,7 +420,7 @@ func (spriter *Spriter) ExtractSprite() error {
 	var rarity map[string]int
 	var enhanced99 map[string]bool
 	if spriter.config.Eliyabot {
-		rarity, enhanced99, err = parseEquipmentMaps(equipmentsJSON, equipmentEnhancementAbilitiesJSON)
+		rarity, enhanced99, err = parseEquipmentMaps(equipmentsJSON, equipmentEnhancementsJSON)
 		if err != nil {
 			return err
 		}
