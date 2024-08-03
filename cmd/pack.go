@@ -8,31 +8,25 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var packPathList string
 var packConcurrency int
 
 var packCmd = &cobra.Command{
 	Use:   "pack [src] [dest]",
-	Short: "Pack files from src into game format at dest",
+	Short: "Pack files from src into game assets at dest (currently only supports default directory structure)",
 	Args:  cobra.ExactArgs(2),
 	Run: func(cmd *cobra.Command, args []string) {
-		config := wf.ExtractorConfig{
-			SrcPath:        filepath.Clean(args[1]),
-			DestPath:       filepath.Clean(args[0]),
-			PathList:       filepath.Clean(packPathList),
-			NoDefaultPaths: false,
-			Concurrency:    packConcurrency,
-			Indent:         0,
-			FlattenCSV:     false,
-			Eliyabot:       false,
+		config := wf.PackerConfig{
+			SrcPath:     filepath.Clean(args[0]),
+			DestPath:    filepath.Clean(args[1]),
+			Concurrency: packConcurrency,
 		}
 
-		extractor, err := wf.NewExtractor(&config)
+		packer, err := wf.NewPacker(&config)
 		if err != nil {
 			log.Fatalln(err)
 		}
 
-		err = extractor.PackAssets()
+		err = packer.PackAssets()
 		if err != nil {
 			log.Fatalln(err)
 		}
@@ -41,6 +35,5 @@ var packCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(packCmd)
-	packCmd.Flags().StringVarP(&packPathList, "path-list", "p", "", "Path to newline delimited file containing possible asset paths (default \"[dest]/.pathlist\")")
 	packCmd.Flags().IntVarP(&packConcurrency, "concurrency", "c", 5, "Maximum number of concurrent file extractions")
 }

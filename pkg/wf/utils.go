@@ -28,6 +28,18 @@ func findAllPaths(b []byte) ([][]byte, error) {
 	return pattern.FindAll(b, -1), nil
 }
 
+func matchPath(fullpath string, base string, ext string) (string, bool) {
+	if strings.HasPrefix(fullpath, base) && strings.HasSuffix(fullpath, ext) {
+		path, err := filepath.Rel(base, fullpath[0:len(fullpath)-len(ext)])
+		if err != nil {
+			log.Printf("[WARN] matchPath: filepath.Rel error, err=%v\n", err)
+		} else {
+			return path, true
+		}
+	}
+	return "", false
+}
+
 func sha256Checksum(reader io.Reader) ([]byte, error) {
 	h := sha256.New()
 	_, err := io.Copy(h, reader)

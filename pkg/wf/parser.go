@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	"github.com/Jeffail/gabs/v2"
 	"github.com/blead/wfax/pkg/encoding"
@@ -13,14 +14,15 @@ type parser interface {
 	getSrc(string, *ExtractorConfig) (string, error)
 	getDest(string, *ExtractorConfig) (string, error)
 	parse([]byte, *ExtractorConfig) ([]byte, error)
-	unparse([]byte, *ExtractorConfig) ([]byte, error)
 	output([]byte, *ExtractorConfig) ([][]byte, error)
+	matchDest(string, *PackerConfig) (string, bool)
+	unparse([]byte, *PackerConfig) ([]byte, error)
 }
 
 type orderedmapParser struct{}
 
 func (*orderedmapParser) getSrc(path string, config *ExtractorConfig) (string, error) {
-	src, err := sha1Digest(toMasterTablePath(string(path)), digestSalt)
+	src, err := sha1Digest(filepath.ToSlash(toMasterTablePath(string(path))), digestSalt)
 	if err != nil {
 		return "", err
 	}
@@ -35,12 +37,16 @@ func (*orderedmapParser) parse(raw []byte, config *ExtractorConfig) ([]byte, err
 	return encoding.OrderedmapToJSON(raw, config.Indent, config.FlattenCSV)
 }
 
-func (*orderedmapParser) unparse(raw []byte, config *ExtractorConfig) ([]byte, error) {
-	return encoding.JSONToOrderedmap(raw)
-}
-
 func (*orderedmapParser) output(raw []byte, config *ExtractorConfig) ([][]byte, error) {
 	return findAllPaths(raw)
+}
+
+func (*orderedmapParser) matchDest(dest string, config *PackerConfig) (string, bool) {
+	return matchPath(dest, filepath.Join(config.SrcPath, outputOrderedMapDir), ".json")
+}
+
+func (*orderedmapParser) unparse(raw []byte, config *PackerConfig) ([]byte, error) {
+	return encoding.JSONToOrderedmap(raw)
 }
 
 type amf3Parser struct {
@@ -48,7 +54,7 @@ type amf3Parser struct {
 }
 
 func (parser *amf3Parser) getSrc(path string, config *ExtractorConfig) (string, error) {
-	src, err := sha1Digest(addExt(string(path), parser.ext+".amf3.deflate"), digestSalt)
+	src, err := sha1Digest(filepath.ToSlash(addExt(string(path), parser.ext+".amf3.deflate")), digestSalt)
 	if err != nil {
 		return "", err
 	}
@@ -63,12 +69,16 @@ func (*amf3Parser) parse(raw []byte, config *ExtractorConfig) ([]byte, error) {
 	return encoding.Amf3ToJSON(raw, config.Indent)
 }
 
-func (*amf3Parser) unparse(raw []byte, config *ExtractorConfig) ([]byte, error) {
-	return nil, fmt.Errorf("unparse amf3Parser: not implemented")
-}
-
 func (*amf3Parser) output(raw []byte, config *ExtractorConfig) ([][]byte, error) {
 	return findAllPaths(raw)
+}
+
+func (parser *amf3Parser) matchDest(dest string, config *PackerConfig) (string, bool) {
+	return matchPath(dest, filepath.Join(config.SrcPath, outputAssetsDir), parser.ext+".json")
+}
+
+func (*amf3Parser) unparse(raw []byte, config *PackerConfig) ([]byte, error) {
+	return nil, fmt.Errorf("unparse amf3Parser: not implemented")
 }
 
 type esdlParser struct {
@@ -150,7 +160,7 @@ type pngParser struct {
 }
 
 func (*pngParser) getSrc(path string, config *ExtractorConfig) (string, error) {
-	src, err := sha1Digest(addExt(string(path), ".png"), digestSalt)
+	src, err := sha1Digest(filepath.ToSlash(addExt(string(path), ".png")), digestSalt)
 	if err != nil {
 		return "", err
 	}
@@ -174,12 +184,16 @@ func (*pngParser) parse(raw []byte, config *ExtractorConfig) ([]byte, error) {
 	return raw, nil
 }
 
-func (*pngParser) unparse(raw []byte, config *ExtractorConfig) ([]byte, error) {
-	return nil, fmt.Errorf("unparse pngParser: not implemented")
-}
-
 func (*pngParser) output(raw []byte, config *ExtractorConfig) ([][]byte, error) {
 	return [][]byte{}, nil
+}
+
+func (*pngParser) matchDest(dest string, config *PackerConfig) (string, bool) {
+	return matchPath(dest, filepath.Join(config.SrcPath, outputAssetsDir), ".png")
+}
+
+func (*pngParser) unparse(raw []byte, config *PackerConfig) ([]byte, error) {
+	return nil, fmt.Errorf("unparse pngParser: not implemented")
 }
 
 type charPngParser struct {
@@ -207,6 +221,19 @@ func (parser *charPngParser) parse(raw []byte, config *ExtractorConfig) ([]byte,
 	return encoding.FitPNG(src, parser.width, parser.height)
 }
 
-func (*charPngParser) unparse(raw []byte, config *ExtractorConfig) ([]byte, error) {
+func (parser *charPngParser) matchDest(dest string, config *PackerConfig) (string, bool) {
+	p, found := parser.pngParser.matchDest(dest, config)
+	if !found {
+		return "", false
+	}
+
+	base, ext, found := strings.Cut(parser.destTemplate, "%s")
+	if !found {
+		return "", false
+	}
+	return matchPath(p, base, ext)
+}
+
+func (*charPngParser) unparse(raw []byte, config *PackerConfig) ([]byte, error) {
 	return nil, fmt.Errorf("unparse charPngParser: not implemented")
 }
