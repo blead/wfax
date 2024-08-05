@@ -70,6 +70,7 @@ func NewPacker(config *PackerConfig) (*Packer, error) {
 	parsers := []parser{
 		// &amf3Parser{ext: ".action.dsl"},
 		// &esdlParser{&amf3Parser{ext: ".esdl"}},
+		&pngParser{},
 		&orderedmapParser{}, // needs to be last because of ambiguous file extension
 	}
 

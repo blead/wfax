@@ -193,7 +193,16 @@ func (*pngParser) matchDest(dest string, config *PackerConfig) (string, bool) {
 }
 
 func (*pngParser) unparse(raw []byte, config *PackerConfig) ([]byte, error) {
-	return nil, fmt.Errorf("unparse pngParser: not implemented")
+	// P N G
+	if raw[1] != 0x50 || raw[2] != 0x4e || raw[3] != 0x47 {
+		return nil, fmt.Errorf("pngParser: png header mismatch, expected: 504e47, found: %x", hex.EncodeToString(raw[1:4]))
+	}
+
+	raw[1] = 0x70
+	raw[2] = 0x6e
+	raw[3] = 0x67
+
+	return raw, nil
 }
 
 type charPngParser struct {
