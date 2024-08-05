@@ -195,7 +195,7 @@ func (*pngParser) matchDest(dest string, config *PackerConfig) (string, bool) {
 func (*pngParser) unparse(raw []byte, config *PackerConfig) ([]byte, error) {
 	// P N G
 	if raw[1] != 0x50 || raw[2] != 0x4e || raw[3] != 0x47 {
-		return nil, fmt.Errorf("pngParser: png header mismatch, expected: 504e47, found: %x", hex.EncodeToString(raw[1:4]))
+		return nil, fmt.Errorf("pngUnparser: png header mismatch, expected: 504e47, found: %x", hex.EncodeToString(raw[1:4]))
 	}
 
 	raw[1] = 0x70
