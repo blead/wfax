@@ -37,6 +37,11 @@ Fetch character comics (`--comics 1`) with `10` maximum concurrent requests into
 wfax fetch --comics 1 --concurrency 10 ./comics
 ```
 
+Extract assets with `2` spaces indentation from `./dump` into `./output`:
+```sh
+wfax extract --indent 2 ./dump ./output
+```
+
 Extract character image assets for eliyabot:
 ```sh
 wfax extract --eliyabot --no-default-paths ./dump ./output
