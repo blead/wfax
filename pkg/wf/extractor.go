@@ -35,7 +35,6 @@ type ExtractorConfig struct {
 	Indent         int
 	FlattenCSV     bool
 	Eliyabot       bool
-	Entities       *map[string]AssetDirKind
 }
 
 // DefaultExtractorConfig generates a default configuration.
