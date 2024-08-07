@@ -1,20 +1,28 @@
 package wf
 
 import (
+	"bufio"
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/blead/wfax/pkg/concurrency"
+)
+
+const (
+	defaultEntitiesList = "entities.csv"
 )
 
 // PackerConfig is the configuration for the packer.
 type PackerConfig struct {
 	SrcPath     string
 	DestPath    string
+	Entities    string
 	Concurrency int
 }
 
@@ -23,6 +31,7 @@ func DefaultPackerConfig() *PackerConfig {
 	return &PackerConfig{
 		SrcPath:     "",
 		DestPath:    "",
+		Entities:    "",
 		Concurrency: 5,
 	}
 }
@@ -31,6 +40,21 @@ func DefaultPackerConfig() *PackerConfig {
 type Packer struct {
 	config  *PackerConfig
 	parsers []parser
+}
+
+type AssetDirKind int
+
+// Enum values for AssetDirKind.
+const (
+	UPLOAD AssetDirKind = iota
+	MEDIUM_UPLOAD
+	ANDROID_UPLOAD
+	ANDROID_MEDIUM_UPLOAD
+)
+
+type PathToAssetDirKindMapping struct {
+	Prefix string
+	Kind   AssetDirKind
 }
 
 // NewPacker creates a new packer with the supplied configuration.
@@ -63,6 +87,10 @@ func NewPacker(config *PackerConfig) (*Packer, error) {
 	}
 	config.DestPath = filepath.Clean(config.DestPath)
 
+	if config.Entities == "" || config.Entities == "." {
+		config.Entities = filepath.Join(config.DestPath, defaultEntitiesList)
+	}
+
 	if config.Concurrency == 0 {
 		config.Concurrency = 5
 	}
@@ -77,7 +105,42 @@ func NewPacker(config *PackerConfig) (*Packer, error) {
 	return &Packer{config: config, parsers: parsers}, nil
 }
 
-func packFile(src string, p parser, config *PackerConfig) (bool, error) {
+func (packer *Packer) readEntities() (map[string]AssetDirKind, error) {
+	f, err := os.Open(packer.config.Entities)
+	if err != nil {
+		// return nil if the EntitiesList does not exist.
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("readEntities: open error, path=%s, %w", packer.config.Entities, err)
+	}
+	defer f.Close()
+
+	pathToAssetDirKind := [4]PathToAssetDirKindMapping{
+		{"production/upload/", UPLOAD},
+		{"production/medium_upload/", MEDIUM_UPLOAD},
+		{"production/android_upload/", ANDROID_UPLOAD},
+		{"production/android_medium_upload/", ANDROID_MEDIUM_UPLOAD},
+	}
+
+	el := make(map[string]AssetDirKind)
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		split := strings.Split(scanner.Text(), ",")
+		path := split[0]
+
+		for _, mapping := range pathToAssetDirKind {
+			if strings.HasPrefix(path, mapping.Prefix) {
+				el[strings.Replace(strings.TrimPrefix(path, mapping.Prefix), "/", "", 1)] = mapping.Kind
+				break
+			}
+		}
+	}
+
+	return el, nil
+}
+
+func packFile(src string, p parser, config *PackerConfig, entities *map[string]AssetDirKind) (bool, error) {
 	path, found := p.matchDest(src, config)
 	if !found {
 		return false, nil
@@ -86,6 +149,18 @@ func packFile(src string, p parser, config *PackerConfig) (bool, error) {
 	dest, err := p.getSrc(path, &ExtractorConfig{SrcPath: config.DestPath})
 	if err != nil {
 		return false, err
+	}
+
+	hash := strings.Replace(strings.TrimPrefix(dest, filepath.Join(config.DestPath, dumpAssetDir)), "\\", "", 2)
+	kind, ok := (*entities)[hash]
+	if ok {
+		assetDirKindToString := [4]string{
+			"upload",
+			"medium_upload",
+			"android_upload",
+			"android_medium_upload",
+		}
+		dest = filepath.Join(config.DestPath, assetDirKindToString[kind], hash[0:2], hash[2:])
 	}
 
 	srcFile, err := os.Open(src)
@@ -120,9 +195,10 @@ func packFile(src string, p parser, config *PackerConfig) (bool, error) {
 }
 
 type packParams struct {
-	path    string
-	parsers []parser
-	config  *PackerConfig
+	path     string
+	parsers  []parser
+	config   *PackerConfig
+	entities *map[string]AssetDirKind
 }
 
 func packPath(i *concurrency.Item[*packParams, []string]) ([]string, error) {
@@ -154,7 +230,7 @@ func packPath(i *concurrency.Item[*packParams, []string]) ([]string, error) {
 
 	// f is file: pack the file
 	for _, p := range i.Data.parsers {
-		found, err := packFile(i.Data.path, p, i.Data.config)
+		found, err := packFile(i.Data.path, p, i.Data.config, i.Data.entities)
 		if err != nil {
 			return nil, err
 		}
@@ -167,6 +243,11 @@ func packPath(i *concurrency.Item[*packParams, []string]) ([]string, error) {
 
 func (packer *Packer) pack() error {
 	err := os.MkdirAll(packer.config.DestPath, 0777)
+	if err != nil {
+		return err
+	}
+
+	entities, err := packer.readEntities()
 	if err != nil {
 		return err
 	}
@@ -196,9 +277,10 @@ func (packer *Packer) pack() error {
 				for _, p := range i.Output {
 					output = append(output, &concurrency.Item[*packParams, []string]{
 						Data: &packParams{
-							path:    p,
-							parsers: packer.parsers,
-							config:  packer.config,
+							path:     p,
+							parsers:  packer.parsers,
+							config:   packer.config,
+							entities: &entities,
 						},
 						Output: nil,
 						Err:    nil,
