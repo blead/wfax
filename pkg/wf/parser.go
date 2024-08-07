@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	"github.com/Jeffail/gabs/v2"
 	"github.com/blead/wfax/pkg/encoding"
@@ -14,12 +15,14 @@ type parser interface {
 	getDest(string, *ExtractorConfig) (string, error)
 	parse([]byte, *ExtractorConfig) ([]byte, error)
 	output([]byte, *ExtractorConfig) ([][]byte, error)
+	matchDest(string, *PackerConfig) (string, bool)
+	unparse([]byte, *PackerConfig) ([]byte, error)
 }
 
 type orderedmapParser struct{}
 
 func (*orderedmapParser) getSrc(path string, config *ExtractorConfig) (string, error) {
-	src, err := sha1Digest(toMasterTablePath(string(path)), digestSalt)
+	src, err := sha1Digest(filepath.ToSlash(toMasterTablePath(string(path))), digestSalt)
 	if err != nil {
 		return "", err
 	}
@@ -38,12 +41,20 @@ func (*orderedmapParser) output(raw []byte, config *ExtractorConfig) ([][]byte, 
 	return findAllPaths(raw)
 }
 
+func (*orderedmapParser) matchDest(dest string, config *PackerConfig) (string, bool) {
+	return matchPath(dest, filepath.Join(config.SrcPath, outputOrderedMapDir), ".json")
+}
+
+func (*orderedmapParser) unparse(raw []byte, config *PackerConfig) ([]byte, error) {
+	return encoding.JSONToOrderedmap(raw)
+}
+
 type amf3Parser struct {
 	ext string
 }
 
 func (parser *amf3Parser) getSrc(path string, config *ExtractorConfig) (string, error) {
-	src, err := sha1Digest(addExt(string(path), parser.ext+".amf3.deflate"), digestSalt)
+	src, err := sha1Digest(filepath.ToSlash(addExt(string(path), parser.ext+".amf3.deflate")), digestSalt)
 	if err != nil {
 		return "", err
 	}
@@ -60,6 +71,14 @@ func (*amf3Parser) parse(raw []byte, config *ExtractorConfig) ([]byte, error) {
 
 func (*amf3Parser) output(raw []byte, config *ExtractorConfig) ([][]byte, error) {
 	return findAllPaths(raw)
+}
+
+func (parser *amf3Parser) matchDest(dest string, config *PackerConfig) (string, bool) {
+	return matchPath(dest, filepath.Join(config.SrcPath, outputAssetsDir), parser.ext+".json")
+}
+
+func (*amf3Parser) unparse(raw []byte, config *PackerConfig) ([]byte, error) {
+	return nil, fmt.Errorf("unparse amf3Parser: not implemented")
 }
 
 type esdlParser struct {
@@ -141,7 +160,7 @@ type pngParser struct {
 }
 
 func (*pngParser) getSrc(path string, config *ExtractorConfig) (string, error) {
-	src, err := sha1Digest(addExt(string(path), ".png"), digestSalt)
+	src, err := sha1Digest(filepath.ToSlash(addExt(string(path), ".png")), digestSalt)
 	if err != nil {
 		return "", err
 	}
@@ -169,6 +188,23 @@ func (*pngParser) output(raw []byte, config *ExtractorConfig) ([][]byte, error) 
 	return [][]byte{}, nil
 }
 
+func (*pngParser) matchDest(dest string, config *PackerConfig) (string, bool) {
+	return matchPath(dest, filepath.Join(config.SrcPath, outputAssetsDir), ".png")
+}
+
+func (*pngParser) unparse(raw []byte, config *PackerConfig) ([]byte, error) {
+	// P N G
+	if raw[1] != 0x50 || raw[2] != 0x4e || raw[3] != 0x47 {
+		return nil, fmt.Errorf("pngUnparser: png header mismatch, expected: 504e47, found: %x", hex.EncodeToString(raw[1:4]))
+	}
+
+	raw[1] = 0x70
+	raw[2] = 0x6e
+	raw[3] = 0x67
+
+	return raw, nil
+}
+
 type charPngParser struct {
 	*pngParser
 	srcTemplate  string
@@ -192,4 +228,21 @@ func (parser *charPngParser) parse(raw []byte, config *ExtractorConfig) ([]byte,
 	}
 
 	return encoding.FitPNG(src, parser.width, parser.height)
+}
+
+func (parser *charPngParser) matchDest(dest string, config *PackerConfig) (string, bool) {
+	p, found := parser.pngParser.matchDest(dest, config)
+	if !found {
+		return "", false
+	}
+
+	base, ext, found := strings.Cut(parser.destTemplate, "%s")
+	if !found {
+		return "", false
+	}
+	return matchPath(p, base, ext)
+}
+
+func (*charPngParser) unparse(raw []byte, config *PackerConfig) ([]byte, error) {
+	return nil, fmt.Errorf("unparse charPngParser: not implemented")
 }

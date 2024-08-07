@@ -22,14 +22,24 @@ go build
 ```
 
 ## Usage
-Fetch new (`diff-only`) assets for version `1.600.0` into `./dump` directory and extract them with `2` spaces indentation into `./output`:
+Fetch new (`diff-only`) raw assets for version `1.600.0` into `./dump` directory:
 ```sh
-wfax fetch --diff-only --version 1.600.0 ./dump && wfax extract --indent 2 ./dump ./output
+wfax fetch --diff-only --version 1.600.0 ./dump
 ```
 
-Fetch character comics (`--comics 1`) with `10` maximum concurrent requests into `./comics` directory.
+Fetch raw assets from custom API and CDN endpoints (file URIs are also supported):
+```sh
+wfax fetch --custom-api file:///assets/asset_lists/en-android-full.json --custom-cdn file:///.cdn ./dump
+```
+
+Fetch character comics (`--comics 1`) with `10` maximum concurrent requests into `./comics` directory:
 ```sh
 wfax fetch --comics 1 --concurrency 10 ./comics
+```
+
+Extract assets with `2` spaces indentation from `./dump` into `./output`:
+```sh
+wfax extract --indent 2 ./dump ./output
 ```
 
 Extract character image assets for eliyabot:
@@ -40,6 +50,11 @@ wfax extract --eliyabot --no-default-paths ./dump ./output
 Extract equipment image assets for eliyabot:
 ```sh
 wfax sprite --eliyabot ./dump ./output
+```
+
+Pack extracted files in `./output` into raw assets in `./repack`:
+```sh
+wfax pack ./output ./repack
 ```
 
 For more detailed information, use `wfax help`.

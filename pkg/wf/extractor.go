@@ -317,6 +317,7 @@ type extractParams struct {
 func extractPath(i *concurrency.Item[*extractParams, [][]byte]) ([][]byte, error) {
 	var output [][][]byte
 	for _, p := range i.Data.parsers {
+
 		o, err := extractFile(i.Data.path, p, i.Data.config)
 		if err != nil {
 			return nil, err

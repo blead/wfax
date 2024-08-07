@@ -14,6 +14,8 @@ var fetchDiff bool
 var fetchConcurrency int
 var fetchRegion string
 var fetchComics int
+var fetchCustomAPI string
+var fetchCustomCDN string
 
 var fetchCmd = &cobra.Command{
 	Use:   "fetch [target dir]",
@@ -24,6 +26,8 @@ var fetchCmd = &cobra.Command{
 			Version:     fetchVersion,
 			Workdir:     filepath.Clean(args[0]),
 			Concurrency: fetchConcurrency,
+			CustomAPI:   fetchCustomAPI,
+			CustomCDN:   fetchCustomCDN,
 		}
 		if fetchDiff {
 			config.Mode = wf.DiffAssets
@@ -71,4 +75,6 @@ func init() {
 	fetchCmd.Flags().IntVarP(&fetchConcurrency, "concurrency", "c", 5, "Maximum number of concurrent asset downloads")
 	fetchCmd.Flags().StringVarP(&fetchRegion, "region", "r", "jp", "Service region/language: jp, gl, th, kr, cn, tw")
 	fetchCmd.Flags().IntVarP(&fetchComics, "comics", "m", 0, "Fetch comics instead (1: character comics, 2: tutorial comics)")
+	fetchCmd.Flags().StringVarP(&fetchCustomAPI, "custom-api", "A", "", "Set custom API endpoint for asset metadata (file URIs also supported)")
+	fetchCmd.Flags().StringVarP(&fetchCustomCDN, "custom-cdn", "C", "", "Set custom CDN endpoint for assets (file URIs also supported)")
 }

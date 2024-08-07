@@ -19,6 +19,7 @@ import (
 
 	"github.com/Jeffail/gabs/v2"
 	"github.com/blead/wfax/pkg/concurrency"
+	"github.com/hashicorp/go-cleanhttp"
 	retryablehttp "github.com/hashicorp/go-retryablehttp"
 	"github.com/tinylib/msgp/msgp"
 )
@@ -96,9 +97,9 @@ func getCDNAddress(region ServiceRegion) string {
 	}
 }
 
-func replaceCDNAddress(location string, region ServiceRegion) string {
-	if region == RegionGL || region == RegionTH || region == RegionKR {
-		return strings.ReplaceAll(location, "{$cdnAddress}", getCDNAddress(region))
+func replaceCDNAddress(location string, cdnAddress string) string {
+	if cdnAddress != "" {
+		return strings.ReplaceAll(location, "{$cdnAddress}", cdnAddress)
 	}
 	return location
 }
@@ -127,6 +128,8 @@ type ClientConfig struct {
 	Workdir     string
 	Concurrency int
 	Region      ServiceRegion
+	CustomAPI   string
+	CustomCDN   string
 }
 
 // DefaultClientConfig generates a default configuration.
@@ -137,6 +140,8 @@ func DefaultClientConfig() *ClientConfig {
 		Workdir:     "",
 		Concurrency: 5,
 		Region:      RegionJP,
+		CustomAPI:   "",
+		CustomCDN:   "",
 	}
 
 	return config
@@ -177,7 +182,11 @@ func NewClient(config *ClientConfig) (*Client, error) {
 		config.Concurrency = 5
 	}
 
+	transport := cleanhttp.DefaultPooledTransport()
+	transport.RegisterProtocol("file", http.NewFileTransport(http.Dir(".")))
+
 	client := retryablehttp.NewClient()
+	client.HTTPClient = &http.Client{Transport: transport}
 	client.Logger = log.Default()
 
 	return &Client{
@@ -212,9 +221,23 @@ func (client *Client) fetchMsgp(req *retryablehttp.Request) ([]byte, error) {
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("fetchMsqgp: non-2xx status code in response, status=%d, url=%s", resp.StatusCode, req.URL.String())
+	}
+
 	var output bytes.Buffer
-	_, err = msgp.CopyToJSON(&output, base64.NewDecoder(base64.StdEncoding, resp.Body))
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
+		return nil, err
+	}
+
+	_, err = msgp.CopyToJSON(&output, base64.NewDecoder(base64.StdEncoding, bytes.NewReader(body)))
+	if err != nil {
+		// not base64, check if body is plain json
+		_, ok := err.(base64.CorruptInputError)
+		if ok && json.Valid(body) {
+			return body, nil
+		}
 		return nil, err
 	}
 
@@ -232,11 +255,17 @@ func (client *Client) parseMetadata(json []byte, parseAssets bool) (string, []*a
 	if err != nil {
 		return "", nil, err
 	}
-	if !jsonParsed.ExistsP("data.info") {
+
+	// make outer data object optional to support asset list file in starpoint
+	if jsonParsed.ExistsP("data") {
+		jsonParsed = jsonParsed.Path("data")
+	}
+
+	if !jsonParsed.ExistsP("info") {
 		return "", []*assetMetadata{}, nil
 	}
 
-	version, ok := jsonParsed.Path("data.info.eventual_target_asset_version").Data().(string)
+	version, ok := jsonParsed.Path("info.eventual_target_asset_version").Data().(string)
 	if !ok {
 		return "", nil, fmt.Errorf("parseMetadata: unable to parse latest version number")
 	}
@@ -244,19 +273,24 @@ func (client *Client) parseMetadata(json []byte, parseAssets bool) (string, []*a
 	var assets []*assetMetadata
 
 	if parseAssets {
+		cdnAddress := client.config.CustomCDN
+		if cdnAddress == "" {
+			cdnAddress = getCDNAddress(client.config.Region)
+		}
+
 		if client.config.Mode == FullAssets {
-			for _, child := range jsonParsed.Path("data.full.archive").Children() {
+			for _, child := range jsonParsed.Path("full.archive").Children() {
 				assets = append(assets, &assetMetadata{
-					location: replaceCDNAddress(child.Path("location").Data().(string), client.config.Region),
+					location: replaceCDNAddress(child.Path("location").Data().(string), cdnAddress),
 					dest:     client.tmpDir,
 					sha256:   child.Path("sha256").Data().(string),
 				})
 			}
 		}
-		for _, group := range jsonParsed.Search("data", "diff", "*", "archive").Children() {
+		for _, group := range jsonParsed.Search("diff", "*", "archive").Children() {
 			for _, child := range group.Children() {
 				assets = append(assets, &assetMetadata{
-					location: replaceCDNAddress(child.Path("location").Data().(string), client.config.Region),
+					location: replaceCDNAddress(child.Path("location").Data().(string), cdnAddress),
 					dest:     client.tmpDir,
 					sha256:   child.Path("sha256").Data().(string),
 				})
@@ -280,6 +314,10 @@ func (client *Client) download(i *concurrency.Item[*assetMetadata, []string]) ([
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("download: non-2xx status code in response, status=%d, url=%s", resp.StatusCode, a.location)
+	}
+
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
@@ -296,7 +334,7 @@ func (client *Client) download(i *concurrency.Item[*assetMetadata, []string]) ([
 			return nil, err
 		}
 		if !bytes.Equal(expected, downloaded) {
-			return nil, fmt.Errorf("download: sha256 mismatch, expected: %x, downloaded: %x", expected, downloaded)
+			return nil, fmt.Errorf("download: sha256 mismatch, expected: %x, downloaded: %x, url: %s", expected, downloaded, a.location)
 		}
 	}
 
@@ -477,7 +515,12 @@ func (client *Client) buildComicListRequest(comicListReq *ComicListRequestBody) 
 		return nil, err
 	}
 
-	req, err := retryablehttp.NewRequest("POST", getAPIEndpoint(client.config.Region, apiComicEndpoint), &body)
+	endpoint := client.config.CustomAPI
+	if endpoint == "" {
+		getAPIEndpoint(client.config.Region, apiComicEndpoint)
+	}
+
+	req, err := retryablehttp.NewRequest("POST", endpoint, &body)
 	if err != nil {
 		return nil, err
 	}
@@ -664,8 +707,13 @@ func (client *Client) FetchAssetsFromAPI(fetchComics int) error {
 		log.Println("[WARN] CN region is untested due to region block")
 	}
 
+	endpoint := client.config.CustomAPI
+	if endpoint == "" {
+		endpoint = getAPIEndpoint(client.config.Region, apiAssetEndpoint)
+	}
+
 	log.Println("[INFO] Fetching asset metadata, clientVersion=" + client.config.Version)
-	metadataReq, err := retryablehttp.NewRequest("GET", getAPIEndpoint(client.config.Region, apiAssetEndpoint), nil)
+	metadataReq, err := retryablehttp.NewRequest("GET", endpoint, nil)
 	if err != nil {
 		return err
 	}

@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"encoding/csv"
 	"encoding/json"
+	"fmt"
 	"strings"
 
 	omap "github.com/iancoleman/orderedmap"
@@ -97,6 +98,94 @@ func readOrderedMap(raw []byte, flattenCSV bool) (json.Marshaler, error) {
 	return output, nil
 }
 
+func writeOrderedmap(jsonData []byte) ([]byte, error) {
+	// trim potential whitespaces
+	data := bytes.TrimLeft(jsonData, "\t\r\n")
+	if len(data) == 0 {
+		return []byte{}, nil
+	}
+
+	// array: convert to zlib-compressed csv
+	if data[0] == '[' {
+		var rec [][]string
+		err := json.Unmarshal(data, &rec)
+		if err != nil {
+			return nil, err
+		}
+
+		var csvData bytes.Buffer
+		w := csv.NewWriter(&csvData)
+		err = w.WriteAll(rec)
+		if err != nil {
+			return nil, err
+		}
+
+		return writeZlib(csvData.Bytes())
+	}
+
+	// object: convert to map structure
+	if data[0] == '{' {
+		om, err := shallowUnmarshalJSONObject(data)
+		if err != nil {
+			return nil, err
+		}
+
+		var keySection, valueSection []byte
+		var offsets []orderedMapOffset
+		currentKeyOffset := int32(0)
+		currentValueOffset := int32(0)
+		keys := om.Keys()
+
+		for _, k := range keys {
+			keyBytes := []byte(k)
+
+			v, _ := om.Get(k)
+			valueJSON, ok := v.(json.RawMessage)
+			if !ok {
+				return nil, fmt.Errorf("writeOrderedmap: value type assertion failed, key=%s, data=%s", k, string(data))
+			}
+			valueBytes, err := writeOrderedmap(valueJSON)
+			if err != nil {
+				return nil, err
+			}
+
+			keySection = append(keySection, keyBytes...)
+			valueSection = append(valueSection, valueBytes...)
+
+			offsets = append(offsets, orderedMapOffset{
+				KeyEndOffset:   currentKeyOffset + int32(len(keyBytes)),
+				ValueEndOffset: currentValueOffset + int32(len(valueBytes)),
+			})
+
+			currentKeyOffset += int32(len(keyBytes))
+			currentValueOffset += int32(len(valueBytes))
+		}
+
+		// header: entriesCount(4) + offsets(4+4)*entriesCount + keySection
+		var header bytes.Buffer
+		binary.Write(&header, binary.LittleEndian, int32(len(offsets)))
+		for _, offset := range offsets {
+			binary.Write(&header, binary.LittleEndian, offset)
+		}
+		header.Write(keySection)
+
+		compressedHeader, err := writeZlib(header.Bytes())
+		if err != nil {
+			return nil, err
+		}
+
+		// orderedmap: headerSize(4) + compressedHeader(headerSize) + valueSection
+		var output bytes.Buffer
+		binary.Write(&output, binary.LittleEndian, int32(len(compressedHeader)))
+		output.Write(compressedHeader)
+		output.Write(valueSection)
+
+		return output.Bytes(), nil
+	}
+
+	return nil, fmt.Errorf("writeOrderedmap: unexpected data structure, data=%s", string(data))
+}
+
 // OrderedmapToJSON converts WF orderedmap to JSON.
 func OrderedmapToJSON(raw []byte, indent int, flattenCSV bool) ([]byte, error) {
 	om, err := readOrderedMap(raw, flattenCSV)
@@ -113,4 +202,9 @@ func OrderedmapToJSON(raw []byte, indent int, flattenCSV bool) ([]byte, error) {
 	err = json.Indent(&output, js, "", strings.Repeat(" ", indent))
 
 	return output.Bytes(), err
+}
+
+// JSONToOrderedmap converts JSON back to WF orderedmap.
+func JSONToOrderedmap(jsonData []byte) ([]byte, error) {
+	return writeOrderedmap(jsonData)
 }

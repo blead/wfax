@@ -19,7 +19,10 @@ import (
 	"github.com/blead/wfax/assets"
 	"github.com/blead/wfax/pkg/concurrency"
 	"github.com/disintegration/imaging"
+	"github.com/hashicorp/go-multierror"
 )
+
+const ENHANCED_99_RARITY = 6
 
 // SpriterConfig is the configuration for the spriter.
 type SpriterConfig struct {
@@ -113,6 +116,10 @@ func NewSpriter(config *SpriterConfig) (*Spriter, error) {
 		if err != nil {
 			return nil, err
 		}
+		backgrounds[ENHANCED_99_RARITY], err = imaging.Decode(bytes.NewReader(assets.ItemRainbowEnhanced))
+		if err != nil {
+			return nil, err
+		}
 		for i, img := range backgrounds {
 			size := int(24 * config.Scale)
 			backgrounds[i] = imaging.Resize(img, size, size, imaging.NearestNeighbor)
@@ -192,33 +199,42 @@ func parseAtlas(atlas []byte) ([]*spriteParams, error) {
 	return output, nil
 }
 
-func parseEquipmentRarityMap(json []byte) (map[string]int, error) {
-	jsonParsed, err := gabs.ParseJSON(json)
+func parseEquipmentMaps(equipmentsJSON []byte, equipmentEnhancementsJSON []byte) (rarityMap map[string]int, enhanced99Map map[string]bool, err error) {
+	equipmentsParsed, err := gabs.ParseJSON(equipmentsJSON)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
+	}
+	equipmentEnhancementsParsed, err := gabs.ParseJSON(equipmentEnhancementsJSON)
+	if err != nil {
+		return nil, nil, err
 	}
 
-	output := make(map[string]int)
-	for id, equipment := range jsonParsed.ChildrenMap() {
+	rarityMap = make(map[string]int)
+	enhanced99Map = make(map[string]bool)
+	for id, equipment := range equipmentsParsed.ChildrenMap() {
 		devname, ok := equipment.Path("0.0").Data().(string)
 		if !ok {
-			return nil, fmt.Errorf("parseEquipmentRarityMap: unable to parse devname, id=%s", id)
+			return nil, nil, fmt.Errorf("parseEquipmentRarityMap: unable to parse devname, id=%s", id)
 		}
 		rarityStr, ok := equipment.Path("0.11").Data().(string)
 		if !ok {
-			return nil, fmt.Errorf("parseEquipmentRarityMap: unable to parse rarity, id=%s, devname=%s", id, devname)
+			return nil, nil, fmt.Errorf("parseEquipmentRarityMap: unable to parse rarity, id=%s, devname=%s", id, devname)
 		}
 		rarity, err := strconv.ParseInt(rarityStr, 10, 32)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		output[devname] = int(rarity)
+		rarityMap[devname] = int(rarity)
+
+		if equipmentEnhancementsParsed.Exists(id) {
+			enhanced99Map[devname] = true
+		}
 	}
 
-	return output, nil
+	return rarityMap, enhanced99Map, nil
 }
 
-func (spriter *Spriter) extractAssets() (spriteSheet []byte, spriteAtlas []byte, equipments []byte, erro error) {
+func (spriter *Spriter) extractAssets() (spriteSheet []byte, spriteAtlas []byte, equipments []byte, equipmentEnhancements []byte, err error) {
 
 	targets := []*concurrency.Item[*extractParams, []byte]{
 		{Data: &extractParams{path: spriter.config.SpritePath, parsers: []parser{&pngParser{}}}},
@@ -226,12 +242,18 @@ func (spriter *Spriter) extractAssets() (spriteSheet []byte, spriteAtlas []byte,
 	}
 
 	if spriter.config.Eliyabot {
-		targets = append(targets, &concurrency.Item[*extractParams, []byte]{
-			Data: &extractParams{path: "item/equipment", parsers: []parser{&orderedmapParser{}}},
-		})
+		targets = append(
+			targets,
+			&concurrency.Item[*extractParams, []byte]{
+				Data: &extractParams{path: "item/equipment", parsers: []parser{&orderedmapParser{}}},
+			},
+			&concurrency.Item[*extractParams, []byte]{
+				Data: &extractParams{path: "equipment_enhancement/equipment_enhancement", parsers: []parser{&orderedmapParser{}}},
+			},
+		)
 	}
 
-	err := concurrency.Dispatcher(
+	err = concurrency.Dispatcher(
 		func(i *concurrency.Item[*extractParams, []byte]) ([]*concurrency.Item[*extractParams, []byte], error) {
 			var output []*concurrency.Item[*extractParams, []byte]
 			if i.Output == nil {
@@ -267,13 +289,13 @@ func (spriter *Spriter) extractAssets() (spriteSheet []byte, spriteAtlas []byte,
 		spriter.config.Concurrency,
 	)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 
 	if spriter.config.Eliyabot {
-		return targets[0].Output, targets[1].Output, targets[2].Output, nil
+		return targets[0].Output, targets[1].Output, targets[2].Output, targets[3].Output, nil
 	}
-	return targets[0].Output, targets[1].Output, nil, nil
+	return targets[0].Output, targets[1].Output, nil, nil, nil
 }
 
 func (spriter *Spriter) processSprite(sheet image.Image, params *spriteParams, rarity int) error {
@@ -292,6 +314,8 @@ func (spriter *Spriter) processSprite(sheet image.Image, params *spriteParams, r
 	if strings.Contains(params.name, "ability_soul") {
 		abisoul = true
 		filename = filename + "_soul"
+	} else if rarity == ENHANCED_99_RARITY {
+		filename = filename + "_enhanced99"
 	} else if strings.HasSuffix(params.name, "_lv70") {
 		filename = filename + "_enhanced"
 	}
@@ -339,7 +363,7 @@ func (spriter *Spriter) processSprite(sheet image.Image, params *spriteParams, r
 	return imaging.Encode(destFile, img, imaging.PNG, imaging.PNGCompressionLevel(png.BestCompression))
 }
 
-func (spriter *Spriter) processAssets(sheet image.Image, atlas []*spriteParams, rarity map[string]int) error {
+func (spriter *Spriter) processAssets(sheet image.Image, atlas []*spriteParams, rarity map[string]int, enhanced99 map[string]bool) error {
 
 	var items []*concurrency.Item[*spriteParams, bool]
 	for _, params := range atlas {
@@ -360,6 +384,13 @@ func (spriter *Spriter) processAssets(sheet image.Image, atlas []*spriteParams, 
 			} else if strings.HasSuffix(i.Data.devname, "_lv70") {
 				i.Data.devname = i.Data.devname[:len(i.Data.devname)-5]
 			}
+
+			if enhanced99[i.Data.devname] && !strings.HasSuffix(i.Data.name, "_lv0") {
+				return true, multierror.Append(
+					spriter.processSprite(sheet, i.Data, rarity[i.Data.devname]),
+					spriter.processSprite(sheet, i.Data, ENHANCED_99_RARITY),
+				).ErrorOrNil()
+			}
 			return true, spriter.processSprite(sheet, i.Data, rarity[i.Data.devname])
 		},
 		items,
@@ -371,7 +402,7 @@ func (spriter *Spriter) processAssets(sheet image.Image, atlas []*spriteParams, 
 func (spriter *Spriter) ExtractSprite() error {
 	log.Println("[INFO] Extracting sprites")
 
-	sheet, atlasJSON, equipmentsJSON, err := spriter.extractAssets()
+	sheet, atlasJSON, equipmentsJSON, equipmentEnhancementsJSON, err := spriter.extractAssets()
 	if err != nil {
 		return err
 	}
@@ -387,14 +418,16 @@ func (spriter *Spriter) ExtractSprite() error {
 	}
 
 	var rarity map[string]int
+	var enhanced99 map[string]bool
 	if spriter.config.Eliyabot {
-		rarity, err = parseEquipmentRarityMap(equipmentsJSON)
+		rarity, enhanced99, err = parseEquipmentMaps(equipmentsJSON, equipmentEnhancementsJSON)
 		if err != nil {
 			return err
 		}
 	} else {
 		rarity = make(map[string]int)
+		enhanced99 = make(map[string]bool)
 	}
 
-	return spriter.processAssets(sheetImage, atlas, rarity)
+	return spriter.processAssets(sheetImage, atlas, rarity, enhanced99)
 }

@@ -29,14 +29,14 @@ func Execute[D any, O any](f func(*Item[D, O]) (O, error), items []*Item[D, O], 
 	close(ich)
 	wg.Wait()
 
-	var errs error
+	var errs *multierror.Error
 	for _, i := range items {
 		if i.Err != nil {
 			errs = multierror.Append(errs, i.Err)
 		}
 	}
 
-	return errs
+	return errs.ErrorOrNil()
 }
 
 func worker[D any, O any](f func(*Item[D, O]) (O, error), items chan *Item[D, O], wg *sync.WaitGroup) {
