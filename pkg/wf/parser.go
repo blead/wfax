@@ -78,7 +78,7 @@ func (parser *amf3Parser) matchDest(dest string, config *PackerConfig) (string, 
 }
 
 func (*amf3Parser) unparse(raw []byte, config *PackerConfig) ([]byte, error) {
-	return nil, fmt.Errorf("unparse amf3Parser: not implemented")
+	return encoding.JSONToAmf3(raw)
 }
 
 type esdlParser struct {
