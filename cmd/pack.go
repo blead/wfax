@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var entitiesPathList string
 var packConcurrency int
 
 var packCmd = &cobra.Command{
@@ -18,6 +19,7 @@ var packCmd = &cobra.Command{
 		config := wf.PackerConfig{
 			SrcPath:     filepath.Clean(args[0]),
 			DestPath:    filepath.Clean(args[1]),
+			Entities:    filepath.Clean(entitiesPathList),
 			Concurrency: packConcurrency,
 		}
 
@@ -35,5 +37,6 @@ var packCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(packCmd)
+	packCmd.Flags().StringVarP(&entitiesPathList, "entities", "e", "", "Path to csv file containing CDN entities (default \"[dest]/entities.csv\")")
 	packCmd.Flags().IntVarP(&packConcurrency, "concurrency", "c", 5, "Maximum number of concurrent file extractions")
 }
